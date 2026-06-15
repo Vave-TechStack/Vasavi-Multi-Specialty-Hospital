@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vasavi
+      POSTGRES_PASSWORD: vasavi
+      POSTGRES_DB: vasavi_hospital
+    volumes:
+      - vasavi_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vasavi -d vasavi_hospital"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://vasavi:vasavi@postgres:5432/vasavi_hospital
+      JWT_SECRET: change-me-in-production
+      FRONTEND_URL: http://localhost:3000
+    ports: ["4000:4000"]
+    command: ["sh", "-c", "npx prisma db push --schema ../prisma/schema.prisma --skip-generate && npm run prisma:seed && npm start"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-http://localhost:4000}
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+    ports: ["3000:3000"]
+    depends_on: [backend]
+volumes:
+  vasavi_data:
