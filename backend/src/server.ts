@@ -1,7 +1,10 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
 import { randomUUID } from 'crypto';
 import http from 'http';
 import express, { NextFunction, Request, RequestHandler, Response } from 'express';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
