@@ -13,6 +13,7 @@ import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
 import { PrismaClient } from './generated/client';
 import { z, ZodError } from 'zod';
+import { seed } from './seed';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -92,8 +93,96 @@ const patientSchema = z.object({
   dateOfBirth: z.coerce.date().max(new Date()),
   gender: z.string().trim().min(1).max(30),
 });
+app.get('/api/patients/stats', auth(), asyncRoute(async (_req, res) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const totalPatients = await prisma.patient.count();
+  const newThisMonth = await prisma.patient.count({ where: { createdAt: { gte: firstDayOfMonth } } });
+  const currentlyAdmitted = await prisma.admission.count({ where: { dischargedAt: null } });
+  const dischargedToday = await prisma.admission.count({
+    where: {
+      dischargedAt: {
+        gte: today,
+        lt: tomorrow,
+      }
+    }
+  });
+
+  // User requested "Inpatients" to mean people who came just for checkups (not admitted)
+  const inpatients = totalPatients - currentlyAdmitted;
+
+  res.json({ totalPatients, newThisMonth, inpatients, dischargedToday });
+}));
+
 app.get('/api/patients', auth(), asyncRoute(async (_req, res) => {
-  res.json(await prisma.patient.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }));
+  res.json(await prisma.patient.findMany({ 
+    include: { admissions: { orderBy: { admittedAt: 'desc' } } },
+    orderBy: { createdAt: 'desc' }, 
+    take: 100 
+  }));
+}));
+
+app.get('/api/beds/available', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.bed.findMany({
+    where: { status: 'AVAILABLE' },
+    include: { room: true },
+    orderBy: { bedNumber: 'asc' }
+  }));
+}));
+
+app.post('/api/patients/:id/admit', auth(['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST']), asyncRoute(async (req: AuthRequest, res) => {
+  const { bedId } = req.body;
+  if (!bedId) return res.status(400).json({ message: 'bedId is required' });
+  
+  const result = await prisma.$transaction(async (tx) => {
+    const admission = await tx.admission.create({
+      data: {
+        patientId: req.params.id,
+        bedId,
+      }
+    });
+    await tx.bed.update({
+      where: { id: bedId },
+      data: { status: 'OCCUPIED' }
+    });
+    return admission;
+  });
+  await audit(req.user!.id, 'CREATE', 'Admission', result.id, req.ip);
+  io.to('authenticated').emit('patient:admitted', result);
+  res.status(201).json(result);
+}));
+
+app.post('/api/patients/:id/discharge', auth(['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST']), asyncRoute(async (req: AuthRequest, res) => {
+  const patient = await prisma.patient.findUnique({
+    where: { id: req.params.id },
+    include: { admissions: { where: { dischargedAt: null } } }
+  });
+  
+  if (!patient || patient.admissions.length === 0) {
+    return res.status(400).json({ message: 'Patient is not currently admitted' });
+  }
+
+  const activeAdmission = patient.admissions[0];
+  
+  const result = await prisma.$transaction(async (tx) => {
+    const admission = await tx.admission.update({
+      where: { id: activeAdmission.id },
+      data: { dischargedAt: new Date() }
+    });
+    await tx.bed.update({
+      where: { id: activeAdmission.bedId },
+      data: { status: 'AVAILABLE' }
+    });
+    return admission;
+  });
+  await audit(req.user!.id, 'UPDATE', 'Admission', result.id, req.ip);
+  io.to('authenticated').emit('patient:discharged', result);
+  res.json(result);
 }));
 app.post('/api/patients', auth(['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST']), asyncRoute(async (req: AuthRequest, res) => {
   const data = patientSchema.parse(req.body);
@@ -196,7 +285,14 @@ io.on('connection', socket => {
 });
 
 const port = Number(process.env.PORT || 4000);
-server.listen(port, () => console.log(`Vasavi API listening on port ${port}`));
+server.listen(port, async () => {
+  console.log(`Vasavi API listening on port ${port}`);
+  try {
+    await seed();
+  } catch (e) {
+    console.error('Error during auto-seeding on startup:', e);
+  }
+});
 
 async function shutdown() {
   server.close();
