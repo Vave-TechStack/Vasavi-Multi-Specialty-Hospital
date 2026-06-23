@@ -22,7 +22,7 @@ export function Overview(){
 }
 
 export function PageTitle({title,text,action='Add new',onAction}:{title:string;text:string;action?:string;onAction?:()=>void}){return <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="font-poppins text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1><p className="mt-1 text-sm text-slate-500">{text}</p></div><button className="btn-primary !px-4 !py-2.5" onClick={onAction}><Plus size={16}/>{action}</button></div>}
-export function TableCard({title,rows,onStatusClick}:{title:string;rows:any[][];onStatusClick?:(row:any[])=>void}){return <div className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 p-5"><h2 className="font-poppins font-semibold">{title}</h2><button><MoreHorizontal size={18}/></button></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><tbody>{rows.map((r,i)=><tr className="border-b border-slate-50 last:border-0" key={i}>{r.slice(0,5).map((c,j)=><td className={`px-5 py-4 ${j===0?'font-semibold text-dark':'text-slate-500'}`} key={j}>{j===4?<button onClick={()=>onStatusClick&&onStatusClick(r)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>:c}</td>)}<td className="px-5 py-4 text-right"><ChevronRight size={16}/></td></tr>)}</tbody></table></div></div>}
+export function TableCard({title,rows,onStatusClick}:{title:string;rows:string[][];onStatusClick?:(row:string[])=>void}){return <div className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 p-5"><h2 className="font-poppins font-semibold">{title}</h2><button><MoreHorizontal size={18}/></button></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><tbody>{rows.map((r,i)=><tr className="border-b border-slate-50 last:border-0" key={i}>{r.slice(0,5).map((c,j)=><td className={`px-5 py-4 ${j===0?'font-semibold text-dark':'text-slate-500'}`} key={j}>{j===4?<button onClick={()=>onStatusClick&&onStatusClick(r)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>:c}</td>)}<td className="px-5 py-4 text-right"><ChevronRight size={16}/></td></tr>)}</tbody></table></div></div>}
 
 const moduleData:Record<string,{title:string;text:string;action:string;stats:string[][];rows:string[][]}>={
  patients:{title:'Patient management',text:'Manage records, documents, history and insurance.',action:'Add patient',stats:[['Total patients','25,842'],['New this month','684'],['Inpatients','128'],['Discharged today','19']],rows:[['VH-20481','Aarav Sharma','34 years','Cardiology','Active'],['VH-20480','Mary Joseph','52 years','Neurology','Admitted'],['VH-20479','Ishaan Patel','8 years','Pediatrics','Follow-up'],['VH-20478','Noor Khan','41 years','Orthopedics','Active']]},
@@ -43,7 +43,7 @@ const fetcher = (path: string) => fetch(`${apiUrl}${path}`, { headers: { Authori
 
 export function ModulePage({ module }: { module: string }) {
   const isPatients = module === 'patients';
-  let d = { ...moduleData[module] || moduleData.patients };
+  const d = { ...moduleData[module] || moduleData.patients };
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [actionModal, setActionModal] = useState<{ type: 'admit' | 'discharge', patientId: string } | null>(null);
@@ -66,8 +66,20 @@ export function ModulePage({ module }: { module: string }) {
 
   // Map API patients to rows
   let displayRows = d.rows;
+  interface Patient {
+    id: string;
+    patientCode?: string | null;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender?: string | null;
+    admissions?: {
+      admittedAt: string;
+      dischargedAt?: string | null;
+    }[];
+  }
   if (isPatients && patients && Array.isArray(patients)) {
-    displayRows = patients.map((p: any) => {
+    displayRows = patients.map((p: Patient) => {
       let status = 'Active';
       let admittedDateStr = '';
       const activeAdmission = p.admissions?.[0];
@@ -131,7 +143,7 @@ export function ModulePage({ module }: { module: string }) {
       if (!res.ok) throw new Error('Failed to add patient');
       await mutatePatients();
       setShowAddModal(false);
-    } catch (err: any) { alert(err.message); }
+    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
   };
 
   const executeAction = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -156,10 +168,10 @@ export function ModulePage({ module }: { module: string }) {
       }
       await mutatePatients();
       setActionModal(null);
-    } catch (err: any) { alert(err.message); }
+    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
   };
 
-  const handleStatusClick = (row: any[]) => {
+  const handleStatusClick = (row: string[]) => {
     if (!isPatients) return;
     const status = row[4];
     const patientId = row[5];
@@ -263,7 +275,7 @@ export function ModulePage({ module }: { module: string }) {
                 <label className="block text-xs font-semibold text-slate-600">Select Available Bed
                   <select name="bedId" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
                     <option value="">Choose a bed...</option>
-                    {beds?.map((b: any) => (
+                    {beds?.map((b: { id: string; bedNumber: string; room: { roomNumber: string } }) => (
                       <option key={b.id} value={b.id}>{b.room.roomNumber} - Bed {b.bedNumber}</option>
                     ))}
                   </select>
