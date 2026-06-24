@@ -21,10 +21,9 @@ export function Overview(){
  <div className="mt-6"><TableCard title="Today’s appointments" rows={appointments}/></div></>
 }
 
-export function PageTitle({title,text,action='Add new',onAction}:{title:string;text:string;action?:string;onAction?:()=>void}){return <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="font-poppins text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1><p className="mt-1 text-sm text-slate-500">{text}</p></div><button className="btn-primary !px-4 !py-2.5" onClick={onAction}><Plus size={16}/>{action}</button></div>}
-export function TableCard({title,rows,onStatusClick}:{title:string;rows:string[][];onStatusClick?:(row:string[])=>void}){return <div className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 p-5"><h2 className="font-poppins font-semibold">{title}</h2><button><MoreHorizontal size={18}/></button></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><tbody>{rows.map((r,i)=><tr className="border-b border-slate-50 last:border-0" key={i}>{r.slice(0,5).map((c,j)=><td className={`px-5 py-4 ${j===0?'font-semibold text-dark':'text-slate-500'}`} key={j}>{j===4?<button onClick={()=>onStatusClick&&onStatusClick(r)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>:c}</td>)}<td className="px-5 py-4 text-right"><ChevronRight size={16}/></td></tr>)}</tbody></table></div></div>}
 
-const moduleData:Record<string,{title:string;text:string;action:string;stats:string[][];rows:string[][]}>={
+
+const moduleData: Record<string, { title: string; text: string; action: string; stats: string[][]; rows: string[][] }> = {
  patients:{title:'Patient management',text:'Manage records, documents, history and insurance.',action:'Add patient',stats:[['Total patients','25,842'],['New this month','684'],['Inpatients','128'],['Discharged today','19']],rows:[['VH-20481','Aarav Sharma','34 years','Cardiology','Active'],['VH-20480','Mary Joseph','52 years','Neurology','Admitted'],['VH-20479','Ishaan Patel','8 years','Pediatrics','Follow-up'],['VH-20478','Noor Khan','41 years','Orthopedics','Active']]},
  appointments:{title:'Appointments',text:'Schedule, reschedule and track every consultation.',action:'Book appointment',stats:[['Today','128'],['Waiting','18'],['Completed','84'],['Cancelled','7']],rows:appointments},
  doctors:{title:'Doctor management',text:'Profiles, schedules, availability and performance.',action:'Add doctor',stats:[['Total doctors','56'],['On duty','42'],['In consultation','17'],['On leave','4']],rows:[['Dr. Ananya Rao','Cardiology','09:00–17:00','18 patients','Available'],['Dr. Arjun Mehta','Neurology','10:00–18:00','14 patients','In consultation'],['Dr. Meera Iyer','Orthopedics','08:00–16:00','21 patients','Available']]},
@@ -37,6 +36,51 @@ const moduleData:Record<string,{title:string;text:string;action:string;stats:str
  reports:{title:'Reports & analytics',text:'Operational, clinical and financial insights.',action:'Export report',stats:[['Revenue growth','12.5%'],['Patient growth','8.2%'],['Bed occupancy','78.8%'],['Collection rate','94.2%']],rows:[['Monthly revenue report','Finance','June 2026','PDF / Excel','Ready'],['Patient outcomes','Clinical','Q2 2026','PDF','Ready'],['Doctor performance','Operations','June 2026','Excel','Processing']]},
  settings:{title:'Hospital settings',text:'Branches, roles, permissions, users and audit logs.',action:'Add user',stats:[['Active users','186'],['Roles','8'],['Branches','1'],['Audit events today','248']],rows:[['Admin role','Full platform access','12 users','Updated today','Active'],['Doctor role','Clinical access','56 users','Updated 2 days ago','Active'],['Reception role','Front desk access','18 users','Updated last week','Active']]},
 };
+
+export function PageTitle({title, text, action='Add new', onAction}:{title:string; text:string; action?:string; onAction?:()=>void}){
+  return (
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <h1 className="font-poppins text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+        <p className="mt-1 text-sm text-slate-500">{text}</p>
+      </div>
+      <button className="btn-primary !px-4 !py-2.5" onClick={onAction}>
+        <Plus size={16}/>
+        {action}
+      </button>
+    </div>
+  );
+}
+
+export function TableCard({title, rows, onStatusClick}:{title:string; rows:string[][]; onStatusClick?:(row:string[])=>void}){
+  return (
+    <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-100 p-5">
+        <h2 className="font-poppins font-semibold">{title}</h2>
+        <button><MoreHorizontal size={18}/></button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] text-left text-sm">
+          <tbody>
+            {rows.map((r,i)=>(
+              <tr className="border-b border-slate-50 last:border-0" key={i}>
+                {r.slice(0,5).map((c,j)=>(
+                  <td className={`px-5 py-4 ${j===0?'font-semibold text-dark':'text-slate-500'}`} key={j}>
+                    {j===4 ?
+                      <button onClick={()=>onStatusClick && onStatusClick(r)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>
+                    : c}
+                  </td>
+                ))}
+                <td className="px-5 py-4 text-right"><ChevronRight size={16}/></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 const fetcher = (path: string) => fetch(`${apiUrl}${path}`, { headers: { Authorization: `Bearer ${localStorage.getItem('vasavi-token') || ''}` } }).then((res) => res.json());
