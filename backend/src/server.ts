@@ -27,10 +27,20 @@ if (process.env.NODE_ENV === 'production' && !configuredSecret) {
 
 const secret = configuredSecret || 'development-only-secret';
 const io = new Server(server, { cors: { origin: allowedOrigin } });
+type SessionUser = { id: string; role: string };
+type AuthRequest = Request & { user?: SessionUser };
+
+type AsyncRouteHandler = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => Promise<any> | any;
+
 const startOfToday = new Date();
 startOfToday.setHours(0, 0, 0, 0);
-const asyncRoute = (handler: RequestHandler): RequestHandler => (req, res, next) => {
-  Promise.resolve(handler(req, res, next)).catch(next);
+
+const asyncRoute = (handler: AsyncRouteHandler): RequestHandler => (req, res, next) => {
+  Promise.resolve(handler(req as AuthRequest, res, next)).catch(next);
 };
 
 app.disable('x-powered-by');
@@ -39,9 +49,6 @@ app.use(helmet());
 app.use(cors({ origin: allowedOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: true, legacyHeaders: false }));
-
-type SessionUser = { id: string; role: string };
-type AuthRequest = Request & { user?: SessionUser };
 
 function readToken(value?: string) {
   return value?.match(/^Bearer\s+(.+)$/i)?.[1];
