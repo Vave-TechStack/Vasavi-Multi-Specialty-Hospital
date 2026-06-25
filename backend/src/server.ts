@@ -18,7 +18,40 @@ import { seed } from './seed';
 const prisma = new PrismaClient();
 const app = express();
 const server = http.createServer(app);
-const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://vasavi-multi-specialty-hospital-fro.vercel.app'
+];
+
+if (process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL.split(',').forEach(url => {
+    const trimmed = url.trim();
+    if (trimmed && !allowedOrigins.includes(trimmed)) {
+      allowedOrigins.push(trimmed);
+    }
+  });
+}
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    const isAllowed = allowedOrigins.includes(origin) || 
+                      origin.endsWith('.vercel.app') || 
+                      /^http:\/\/localhost:\d+$/.test(origin);
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+};
+
 const configuredSecret = process.env.JWT_SECRET;
 
 if (process.env.NODE_ENV === 'production' && !configuredSecret) {
@@ -26,7 +59,7 @@ if (process.env.NODE_ENV === 'production' && !configuredSecret) {
 }
 
 const secret = configuredSecret || 'development-only-secret';
-const io = new Server(server, { cors: { origin: allowedOrigin } });
+const io = new Server(server, { cors: corsOptions });
 type SessionUser = { id: string; role: string };
 type AuthRequest = Request & { user?: SessionUser };
 
@@ -46,7 +79,7 @@ const asyncRoute = (handler: AsyncRouteHandler): RequestHandler => (req: Request
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors({ origin: allowedOrigin, credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: true, legacyHeaders: false }));
 
