@@ -39,7 +39,7 @@ type AsyncRouteHandler = (
 const startOfToday = new Date();
 startOfToday.setHours(0, 0, 0, 0);
 
-const asyncRoute = (handler: AsyncRouteHandler): RequestHandler => (req, res, next) => {
+const asyncRoute = (handler: AsyncRouteHandler): RequestHandler => (req: Request, res: Response, next: NextFunction) => {
   Promise.resolve(handler(req as AuthRequest, res, next)).catch(next);
 };
 
@@ -866,8 +866,8 @@ app.post('/api/public/contact-requests', requestLimiter, asyncRoute(async (req, 
   res.status(201).json({ id: request.id, message: 'Contact request received' });
 }));
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'vasavi-api', time: new Date() }));
-app.use((_req, res) => res.status(404).json({ message: 'Route not found' }));
+app.get('/api/health', (_req: Request, res: Response) => res.json({ status: 'ok', service: 'vasavi-api', time: new Date() }));
+app.use((_req: Request, res: Response) => res.status(404).json({ message: 'Route not found' }));
 app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
   if (error instanceof ZodError) return res.status(400).json({ message: 'Validation failed', issues: error.flatten() });
   console.error(error);
