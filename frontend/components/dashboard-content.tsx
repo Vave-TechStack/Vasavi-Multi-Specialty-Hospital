@@ -3,7 +3,7 @@
 import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronRight, CircleDollarSign, Download, Edit2, MoreHorizontal, Plus, Search, Stethoscope, Trash2, Users } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { LucideIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 
 const chart=[{d:'Mon',v:38},{d:'Tue',v:52},{d:'Wed',v:48},{d:'Thu',v:71},{d:'Fri',v:62},{d:'Sat',v:84},{d:'Sun',v:76}];
@@ -149,6 +149,19 @@ export function ModulePage({ module }: { module: string }) {
   const [actionModal, setActionModal] = useState<{ type: 'admit' | 'discharge', patientId: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
+
+  // Auto-open modal if '?new=true' is in the URL query string
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('new') === 'true') {
+        setShowAddModal(true);
+        // Clean up URL parameter to prevent opening on refresh
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [module]);
   
   // Dynamic fetches
   const { data: stats } = useSWR(`/${module === 'settings' ? 'settings' : module}/stats`, fetcher, { refreshInterval: 5000 });
