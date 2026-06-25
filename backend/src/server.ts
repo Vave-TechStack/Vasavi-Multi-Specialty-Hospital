@@ -904,10 +904,11 @@ app.use((_req: Request, res: Response) => res.status(404).json({ message: 'Route
 app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
   if (error instanceof ZodError) return res.status(400).json({ message: 'Validation failed', issues: error.flatten() });
   console.error(error);
+  
+  const isProduction = process.env.NODE_ENV === 'production';
   return res.status(500).json({ 
     message: 'Unexpected server error', 
-    error: error.message,
-    stack: error.stack
+    ...(isProduction ? {} : { error: error.message, stack: error.stack })
   });
 });
 
