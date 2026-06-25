@@ -54,6 +54,7 @@ export function Overview(){
 const moduleData: Record<string, { title: string; text: string; action: string; stats: string[][]; rows: string[][] }> = {
  patients:{title:'Patient management',text:'Manage records, documents, history and insurance.',action:'Add patient',stats:[['Total patients','25,842'],['New this month','684'],['Inpatients','128'],['Discharged today','19']],rows:[['VH-20481','Aarav Sharma','34 years','Cardiology','Active'],['VH-20480','Mary Joseph','52 years','Neurology','Admitted'],['VH-20479','Ishaan Patel','8 years','Pediatrics','Follow-up'],['VH-20478','Noor Khan','41 years','Orthopedics','Active']]},
  appointments:{title:'Appointments',text:'Schedule, reschedule and track every consultation.',action:'Book appointment',stats:[['Today','128'],['Waiting','18'],['Completed','84'],['Cancelled','7']],rows:appointments},
+ requests:{title:'Appointment requests',text:'Review, update and manage incoming patient appointment requests.',action:'Create request',stats:[['Total requests','0'],['New','0'],['Confirmed','0'],['Cancelled','0']],rows:[]},
  doctors:{title:'Doctor management',text:'Profiles, schedules, availability and performance.',action:'Add doctor',stats:[['Total doctors','56'],['On duty','42'],['In consultation','17'],['On leave','4']],rows:[['Dr. Ananya Rao','Cardiology','09:00–17:00','18 patients','Available'],['Dr. Arjun Mehta','Neurology','10:00–18:00','14 patients','In consultation'],['Dr. Meera Iyer','Orthopedics','08:00–16:00','21 patients','Available']]},
  billing:{title:'Billing & payments',text:'Invoices, insurance claims and revenue tracking.',action:'Create invoice',stats:[['Today’s revenue','₹4.82L'],['Pending','₹1.16L'],['Insurance claims','38'],['Paid invoices','106']],rows:[['INV-10482','Saanvi Rao','Consultation','₹1,500','Paid'],['INV-10481','Kiran Kumar','Diagnostics','₹8,400','Pending'],['INV-10480','Fatima Begum','Surgery','₹1,24,000','Insurance']]},
  pharmacy:{title:'Pharmacy inventory',text:'Monitor medicine stock, expiry and purchase orders.',action:'Add medicine',stats:[['Medicines','2,418'],['Low stock','23'],['Expiring soon','16'],['Today’s sales','₹82,430']],rows:[['MED-0294','Atorvastatin 10mg','480 units','Nov 2027','In stock'],['MED-0293','Amoxicillin 500mg','32 units','Jan 2027','Low stock'],['MED-0292','Metformin 500mg','760 units','Aug 2028','In stock']]},
@@ -169,7 +170,7 @@ export function ModulePage({ module }: { module: string }) {
   const { data: beds } = useSWR(isPatients && actionModal?.type === 'admit' ? '/beds/available' : null, fetcher);
 
   // Dropdown list requirements
-  const needDepts = ['appointments', 'doctors'].includes(module);
+  const needDepts = ['appointments', 'doctors', 'requests'].includes(module);
   const needDocs = ['appointments'].includes(module);
   const needPats = ['appointments', 'billing', 'laboratory'].includes(module);
   const needTests = ['laboratory'].includes(module);
@@ -195,6 +196,13 @@ export function ModulePage({ module }: { module: string }) {
         ['Today', stats.today?.toLocaleString() || '0'],
         ['Waiting', stats.waiting?.toLocaleString() || '0'],
         ['Completed', stats.completed?.toLocaleString() || '0'],
+        ['Cancelled', stats.cancelled?.toLocaleString() || '0']
+      ];
+    } else if (module === 'requests') {
+      d.stats = [
+        ['Total requests', stats.totalRequests?.toLocaleString() || '0'],
+        ['New', stats.new?.toLocaleString() || '0'],
+        ['Confirmed', stats.confirmed?.toLocaleString() || '0'],
         ['Cancelled', stats.cancelled?.toLocaleString() || '0']
       ];
     } else if (module === 'doctors') {
@@ -292,6 +300,20 @@ export function ModulePage({ module }: { module: string }) {
             item.doctor?.user?.name || 'Unknown Doctor',
             item.department?.name || 'General',
             item.status || 'SCHEDULED',
+            item.id
+          ];
+          break;
+        }
+        case 'requests': {
+          const formattedDate = item.preferredDate 
+            ? new Date(item.preferredDate).toLocaleDateString()
+            : '—';
+          r = [
+            formattedDate,
+            item.patientName || 'Unknown Patient',
+            item.phone || '—',
+            item.department?.name || 'General',
+            item.status || 'NEW',
             item.id
           ];
           break;
@@ -581,6 +603,38 @@ export function ModulePage({ module }: { module: string }) {
             </label>
             <label className="block text-xs font-semibold text-slate-600">Notes
               <textarea name="notes" defaultValue={item?.notes || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" rows={3}></textarea>
+            </label>
+          </>
+        );
+      case 'requests':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Patient Name
+              <input name="patientName" defaultValue={item?.patientName || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Phone
+              <input name="phone" defaultValue={item?.phone || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Select Department
+              <select name="departmentId" defaultValue={item?.departmentId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm">
+                <option value="">Choose department...</option>
+                {departments?.map((dep: any) => (
+                  <option key={dep.id} value={dep.id}>{dep.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Preferred Doctor
+              <input name="preferredDoctor" defaultValue={item?.preferredDoctor || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Preferred Date
+              <input name="preferredDate" type="date" defaultValue={item?.preferredDate ? new Date(item.preferredDate).toISOString().split('T')[0] : ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Status
+              <select name="status" defaultValue={item?.status || 'NEW'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="NEW">NEW</option>
+                <option value="CONFIRMED">CONFIRMED</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
             </label>
           </>
         );

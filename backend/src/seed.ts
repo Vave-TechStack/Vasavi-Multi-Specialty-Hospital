@@ -501,6 +501,34 @@ export async function seed() {
     });
   }
 
+  // 15. Seed Appointment Requests
+  const appointmentRequestsData = [
+    { patientName: 'Gopi', phone: '8898765432', deptCode: 'GENM', preferredDoctor: 'Dr. Ananya Rao', preferredDate: new Date(Date.now() + 24 * 3600 * 1000), status: 'NEW' },
+    { patientName: 'Suresh Kumar', phone: '9988776655', deptCode: 'CARD', preferredDoctor: 'Dr. Arjun Mehta', preferredDate: new Date(Date.now() + 48 * 3600 * 1000), status: 'NEW' },
+    { patientName: 'Lakshmi Prasanna', phone: '7766554433', deptCode: 'ORTH', preferredDoctor: 'Dr. Meera Iyer', preferredDate: new Date(Date.now() + 72 * 3600 * 1000), status: 'CONFIRMED' }
+  ];
+
+  for (const req of appointmentRequestsData) {
+    const existing = await prisma.appointmentRequest.findFirst({
+      where: {
+        patientName: req.patientName,
+        phone: req.phone,
+      }
+    });
+    if (!existing) {
+      await prisma.appointmentRequest.create({
+        data: {
+          patientName: req.patientName,
+          phone: req.phone,
+          departmentId: deptMap[req.deptCode],
+          preferredDoctor: req.preferredDoctor,
+          preferredDate: req.preferredDate,
+          status: req.status,
+        }
+      });
+    }
+  }
+
   console.log('Database seeding finished successfully!');
 }
 

@@ -5,11 +5,13 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { ArrowRight, Clock3, Facebook, Instagram, Linkedin, Mail, MapPin, Menu, Phone, X } from 'lucide-react';
 import { Logo } from './logo';
+import { AppointmentModal } from '@/components/appointment-modal';
 
 const links = [['Home','/'],['About','/about'],['Services','/services'],['Doctors','/doctors'],['Testimonials','/testimonials'],['Contact','/contact']];
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const pathname = usePathname();
   if (pathname.startsWith('/dashboard') || pathname === '/login') return null;
   return (
@@ -28,12 +30,12 @@ export function SiteHeader() {
           </nav>
           <div className="hidden items-center gap-3 sm:flex">
             <Link href="/login" className="px-3 text-sm font-semibold text-slate-600">Login</Link>
-            <Link href="/appointment" className="btn-primary !px-5 !py-3">Book Appointment <ArrowRight size={16}/></Link>
+            <button onClick={() => setShowModal(true)} className="btn-primary !px-5 !py-3">Book Appointment <ArrowRight size={16}/></button>
           </div>
           <button aria-label="Open menu" className="rounded-xl border border-slate-200 p-2.5 sm:hidden" onClick={() => setOpen(!open)}>{open ? <X/> : <Menu/>}</button>
         </div>
-        {open && <nav className="container-pad flex flex-col gap-1 border-t border-slate-100 py-4 sm:hidden">{links.map(([label, href]) => <Link onClick={()=>setOpen(false)} className="rounded-xl px-4 py-3 font-medium hover:bg-slate-50" href={href} key={href}>{label}</Link>)}<Link href="/appointment" className="btn-primary mt-2">Book Appointment</Link></nav>}
-      </header>
+        {open && <nav className="container-pad flex flex-col gap-1 border-t border-slate-100 py-4 sm:hidden">{links.map(([label, href]) => <Link onClick={()=>setOpen(false)} className="rounded-xl px-4 py-3 font-medium hover:bg-slate-50" href={href} key={href}>{label}</Link>)}<button onClick={() => setShowModal(true)} className="btn-primary mt-2">Book Appointment</button></nav>}
+      </header>{showModal && <AppointmentModal onClose={() => setShowModal(false)} />}
     </>
   );
 }

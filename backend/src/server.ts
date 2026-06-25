@@ -862,6 +862,81 @@ app.delete('/api/settings/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async
   res.json({ message: 'User deleted' });
 }));
 
+// --- Appointment Requests CRM CRUD ---
+const backendRequestSchema = z.object({
+  patientName: z.string().trim().min(2).max(120),
+  phone: z.string().trim().min(8).max(20),
+  departmentId: z.string().cuid().nullable().optional(),
+  preferredDoctor: z.string().trim().max(120).optional().nullable(),
+  preferredDate: z.coerce.date(),
+  status: z.enum(['NEW', 'CONFIRMED', 'CANCELLED']),
+});
+
+app.get('/api/requests', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.appointmentRequest.findMany({
+    include: { department: true },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  }));
+}));
+
+app.get('/api/requests/stats', auth(), asyncRoute(async (_req, res) => {
+  const [total, newCount, confirmedCount, cancelledCount] = await Promise.all([
+    prisma.appointmentRequest.count(),
+    prisma.appointmentRequest.count({ where: { status: 'NEW' } }),
+    prisma.appointmentRequest.count({ where: { status: 'CONFIRMED' } }),
+    prisma.appointmentRequest.count({ where: { status: 'CANCELLED' } }),
+  ]);
+  res.json({
+    totalRequests: total,
+    new: newCount,
+    confirmed: confirmedCount,
+    cancelled: cancelledCount,
+  });
+}));
+
+app.post('/api/requests', auth(), asyncRoute(async (req: AuthRequest, res) => {
+  const data = backendRequestSchema.parse(req.body);
+  const item = await prisma.appointmentRequest.create({
+    data: {
+      patientName: data.patientName,
+      phone: data.phone,
+      departmentId: data.departmentId,
+      preferredDoctor: data.preferredDoctor,
+      preferredDate: data.preferredDate,
+      status: data.status,
+    }
+  });
+  await audit(req.user!.id, 'CREATE', 'AppointmentRequest', item.id, req.ip);
+  io.to('authenticated').emit('appointment-request:created', item);
+  res.status(201).json(item);
+}));
+
+app.put('/api/requests/:id', auth(), asyncRoute(async (req: AuthRequest, res) => {
+  const data = backendRequestSchema.parse(req.body);
+  const item = await prisma.appointmentRequest.update({
+    where: { id: req.params.id },
+    data: {
+      patientName: data.patientName,
+      phone: data.phone,
+      departmentId: data.departmentId,
+      preferredDoctor: data.preferredDoctor,
+      preferredDate: data.preferredDate,
+      status: data.status,
+    }
+  });
+  await audit(req.user!.id, 'UPDATE', 'AppointmentRequest', item.id, req.ip);
+  io.to('authenticated').emit('appointment-request:updated', item);
+  res.json(item);
+}));
+
+app.delete('/api/requests/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const item = await prisma.appointmentRequest.delete({ where: { id: req.params.id } });
+  await audit(req.user!.id, 'DELETE', 'AppointmentRequest', item.id, req.ip);
+  io.to('authenticated').emit('appointment-request:deleted', item);
+  res.json({ message: 'Appointment request deleted successfully' });
+}));
+
 const requestLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
 const appointmentRequestSchema = z.object({
   patientName: z.string().trim().min(2).max(120),
@@ -884,6 +959,85 @@ app.post('/api/public/appointment-requests', requestLimiter, asyncRoute(async (r
   });
   io.to('authenticated').emit('appointment-request:created', request);
   res.status(201).json({ id: request.id, message: 'Appointment request received' });
+}));
+
+// Get list of appointment requests
+app.get('/api/requests', auth(['ADMIN', 'SUPER_ADMIN']), asyncRoute(async (req, res) => {
+  const requests = await prisma.appointmentRequest.findMany({
+    include: { department: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(requests);
+}));
+
+// Get stats for appointment requests
+app.get('/api/requests/stats', auth(['ADMIN', 'SUPER_ADMIN']), asyncRoute(async (req, res) => {
+  const [total, newCount, confirmed, cancelled] = await Promise.all([
+    prisma.appointmentRequest.count(),
+    prisma.appointmentRequest.count({ where: { status: 'NEW' } }),
+    prisma.appointmentRequest.count({ where: { status: 'CONFIRMED' } }),
+    prisma.appointmentRequest.count({ where: { status: 'CANCELLED' } }),
+  ]);
+  res.json({ totalRequests: total, new: newCount, confirmed, cancelled });
+}));
+
+app.post('/api/public/appointments', requestLimiter, asyncRoute(async (req, res) => {
+  const publicAppointmentSchema = z.object({
+    patient: z.object({
+      firstName: z.string().trim().min(2).max(80),
+      lastName: z.string().trim().min(2).max(80),
+      phone: z.string().trim().min(8).max(20),
+      email: z.string().trim().email().optional(),
+      dateOfBirth: z.coerce.date().max(new Date()),
+      gender: z.string().trim().min(1).max(30),
+      address: z.string().optional(),
+      emergencyName: z.string().optional(),
+      emergencyPhone: z.string().optional(),
+    }),
+    appointment: z.object({
+      departmentId: z.string().cuid(),
+      doctorId: z.string().cuid(),
+      scheduledAt: z.coerce.date().min(startOfToday),
+      reason: z.string().optional(),
+    }),
+  });
+
+  const { patient, appointment } = publicAppointmentSchema.parse(req.body);
+
+  // Upsert patient by unique phone or email
+  const existingPatient = await prisma.patient.findFirst({
+    where: {
+      OR: [{ phone: patient.phone }, { email: patient.email?.toLowerCase() }],
+    },
+  });
+
+  const patientRecord = existingPatient
+    ? await prisma.patient.update({
+        where: { id: existingPatient.id },
+        data: { ...patient, email: patient.email?.toLowerCase() },
+      })
+    : await prisma.patient.create({
+        data: {
+          ...patient,
+          email: patient.email?.toLowerCase(),
+          patientCode: `VH-${randomUUID().slice(0, 8).toUpperCase()}`,
+        },
+      });
+
+  const created = await prisma.appointment.create({
+    data: {
+      patientId: patientRecord.id,
+      doctorId: appointment.doctorId,
+      departmentId: appointment.departmentId,
+      scheduledAt: appointment.scheduledAt,
+      reason: appointment.reason,
+      status: 'SCHEDULED',
+    },
+  });
+
+  await audit(req.user?.id ?? 'public', 'CREATE', 'Appointment', created.id, req.ip);
+  io.to('authenticated').emit('appointment:created', created);
+  res.status(201).json({ id: created.id, message: 'Appointment booked' });
 }));
 
 const contactRequestSchema = z.object({

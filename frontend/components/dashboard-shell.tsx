@@ -8,7 +8,7 @@ import { Logo } from './logo';
 import type { LucideIcon } from 'lucide-react';
 
 export const modules: [string, string, LucideIcon][] = [
-  ['Overview','/dashboard',LayoutDashboard],['Patients','/dashboard/patients',Users],['Appointments','/dashboard/appointments',CalendarDays],['Doctors','/dashboard/doctors',Stethoscope],['Billing','/dashboard/billing',WalletCards],['Pharmacy','/dashboard/pharmacy',Package],['Laboratory','/dashboard/laboratory',FlaskConical],['Staff & HR','/dashboard/staff',UserRoundCog],['Ward & beds','/dashboard/wards',BedDouble],['Emergency','/dashboard/emergency',Ambulance],['Reports','/dashboard/reports',BarChart3],['Settings','/dashboard/settings',Settings],
+  ['Overview','/dashboard',LayoutDashboard],['Patients','/dashboard/patients',Users],['Appointments','/dashboard/appointments',CalendarDays],['Requests','/dashboard/requests',Bell],['Doctors','/dashboard/doctors',Stethoscope],['Billing','/dashboard/billing',WalletCards],['Pharmacy','/dashboard/pharmacy',Package],['Laboratory','/dashboard/laboratory',FlaskConical],['Staff & HR','/dashboard/staff',UserRoundCog],['Ward & beds','/dashboard/wards',BedDouble],['Emergency','/dashboard/emergency',Ambulance],['Reports','/dashboard/reports',BarChart3],['Settings','/dashboard/settings',Settings],
 ];
 
 function tokenExpiry(token: string) {
