@@ -11,7 +11,7 @@ import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
-import { PrismaClient } from './generated/client';
+import { PrismaClient } from '@prisma/client';
 import { z, ZodError } from 'zod';
 import { seed } from './seed';
 

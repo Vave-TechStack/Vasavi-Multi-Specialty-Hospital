@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { PrismaClient, AppointmentStatus, InvoiceStatus, BedStatus, Priority } from './generated/client';
+import { PrismaClient, AppointmentStatus, InvoiceStatus, BedStatus, Priority } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
