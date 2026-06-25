@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronRight, CircleDollarSign, Download, MoreHorizontal, Plus, Search, Stethoscope, Users } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronRight, CircleDollarSign, Download, Edit2, MoreHorizontal, Plus, Search, Stethoscope, Trash2, Users } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -16,9 +16,37 @@ const overviewStats: { icon: LucideIcon; label: string; value: string; detail: s
 ];
 
 export function Overview(){
- return <><PageTitle title="Good morning, Admin" text="Here’s what is happening across Vasavi today."/><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{overviewStats.map(({icon:Icon,label,value,detail,up})=><div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm" key={label}><div className="flex justify-between"><span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon size={19}/></span><span className={`flex items-center gap-1 text-xs font-semibold ${up?'text-emerald-600':'text-slate-400'}`}>{up?<ArrowUpRight size={14}/>:<ArrowDownRight size={14}/>} {detail}</span></div><p className="mt-5 text-xs font-medium text-slate-400">{label}</p><p className="mt-1 font-poppins text-2xl font-semibold">{value}</p></div>)}</div>
- <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_.6fr]"><div className="rounded-2xl bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-poppins font-semibold">Patient flow</h2><p className="mt-1 text-xs text-slate-400">Visits over the last 7 days</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">+14.2% this week</span></div><div className="mt-5 h-64"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#14b8a6" stopOpacity={.35}/><stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/><XAxis dataKey="d" axisLine={false} tickLine={false} fontSize={11}/><YAxis axisLine={false} tickLine={false} fontSize={11}/><Tooltip/><Area type="monotone" dataKey="v" stroke="#0f766e" strokeWidth={3} fill="url(#fill)"/></AreaChart></ResponsiveContainer></div></div><div className="rounded-2xl bg-dark p-6 text-white shadow-sm"><h2 className="font-poppins font-semibold">Live operations</h2><p className="mt-1 text-xs text-slate-400">Updated just now</p><div className="mt-6 grid gap-4">{[['Emergency queue','6','2 critical'],['Beds available','34','8 ICU'],['Lab results pending','19','4 urgent'],['Ambulances active','3','ETA 8 min']].map(([a,b,c],i)=><div className="flex items-center gap-3" key={a}><span className={`size-2 rounded-full ${i===0?'bg-red-400':'bg-secondary'}`}/><div className="flex-1"><p className="text-sm">{a}</p><p className="text-[10px] text-slate-500">{c}</p></div><p className="font-poppins text-xl font-semibold">{b}</p></div>)}</div></div></div>
- <div className="mt-6"><TableCard title="Today’s appointments" rows={appointments}/></div></>
+  const { data: dbStats } = useSWR('/dashboard', fetcher, { refreshInterval: 5000 });
+  const { data: appointmentsList } = useSWR('/appointments', fetcher, { refreshInterval: 5000 });
+
+  const activePatients = dbStats?.patients?.toLocaleString() || '1,847';
+  const totalDocs = dbStats?.doctors?.toLocaleString() || '42';
+  const todayApps = dbStats?.appointments?.toLocaleString() || '128';
+
+  const stats = [
+    { icon: CircleDollarSign, label: 'Today’s revenue', value: '₹4,82,650', detail: '12.5%', up: true },
+    { icon: CalendarDays, label: 'Appointments', value: todayApps, detail: '8.2%', up: true },
+    { icon: Users, label: 'Active patients', value: activePatients, detail: '3.1%', up: true },
+    { icon: Stethoscope, label: 'Doctors on duty', value: totalDocs, detail: '2 off duty', up: false },
+  ];
+
+  let displayAppointments = appointments;
+  if (appointmentsList && Array.isArray(appointmentsList)) {
+    displayAppointments = appointmentsList.map((a: any) => {
+      const timeStr = a.scheduledAt ? new Date(a.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '09:00';
+      return [
+        timeStr,
+        a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : 'Patient',
+        a.doctor?.user?.name || 'Doctor',
+        a.department?.name || 'General',
+        a.status || 'Confirmed'
+      ];
+    });
+  }
+
+  return <><PageTitle title="Good morning, Admin" text="Here’s what is happening across Vasavi today."/><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({icon:Icon,label,value,detail,up})=><div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm" key={label}><div className="flex justify-between"><span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon size={19}/></span><span className={`flex items-center gap-1 text-xs font-semibold ${up?'text-emerald-600':'text-slate-400'}`}>{up?<ArrowUpRight size={14}/>:<ArrowDownRight size={14}/>} {detail}</span></div><p className="mt-5 text-xs font-medium text-slate-400">{label}</p><p className="mt-1 font-poppins text-2xl font-semibold">{value}</p></div>)}</div>
+  <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_.6fr]"><div className="rounded-2xl bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-poppins font-semibold">Patient flow</h2><p className="mt-1 text-xs text-slate-400">Visits over the last 7 days</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">+14.2% this week</span></div><div className="mt-5 h-64"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#14b8a6" stopOpacity={.35}/><stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/><XAxis dataKey="d" axisLine={false} tickLine={false} fontSize={11}/><YAxis axisLine={false} tickLine={false} fontSize={11}/><Tooltip/><Area type="monotone" dataKey="v" stroke="#0f766e" strokeWidth={3} fill="url(#fill)"/></AreaChart></ResponsiveContainer></div></div><div className="rounded-2xl bg-dark p-6 text-white shadow-sm"><h2 className="font-poppins font-semibold">Live operations</h2><p className="mt-1 text-xs text-slate-400">Updated just now</p><div className="mt-6 grid gap-4">{[['Emergency queue','6','2 critical'],['Beds available','34','8 ICU'],['Lab results pending','19','4 urgent'],['Ambulances active','3','ETA 8 min']].map(([a,b,c],i)=><div className="flex items-center gap-3" key={a}><span className={`size-2 rounded-full ${i===0?'bg-red-400':'bg-secondary'}`}/><div className="flex-1"><p className="text-sm">{a}</p><p className="text-[10px] text-slate-500">{c}</p></div><p className="font-poppins text-xl font-semibold">{b}</p></div>)}</div></div></div>
+  <div className="mt-6"><TableCard title="Today’s appointments" rows={displayAppointments}/></div></>
 }
 
 
@@ -52,12 +80,24 @@ export function PageTitle({title, text, action='Add new', onAction}:{title:strin
   );
 }
 
-export function TableCard({title, rows, onStatusClick}:{title:string; rows:string[][]; onStatusClick?:(row:string[])=>void}){
+export function TableCard({
+  title, 
+  rows, 
+  onStatusClick,
+  onEditClick,
+  onDeleteClick
+}:{
+  title:string; 
+  rows:string[][]; 
+  onStatusClick?:(row:string[])=>void;
+  onEditClick?:(row:string[])=>void;
+  onDeleteClick?:(row:string[])=>void;
+}){
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-100 p-5">
         <h2 className="font-poppins font-semibold">{title}</h2>
-        <button><MoreHorizontal size={18}/></button>
+        <button aria-label="More options"><MoreHorizontal size={18}/></button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] text-left text-sm">
@@ -71,7 +111,19 @@ export function TableCard({title, rows, onStatusClick}:{title:string; rows:strin
                     : c}
                   </td>
                 ))}
-                <td className="px-5 py-4 text-right"><ChevronRight size={16}/></td>
+                <td className="px-5 py-4 text-right flex justify-end items-center gap-3">
+                  {onEditClick && (
+                    <button onClick={() => onEditClick(r)} className="text-slate-400 hover:text-primary transition" title="Edit" aria-label="Edit record">
+                      <Edit2 size={15} />
+                    </button>
+                  )}
+                  {onDeleteClick && (
+                    <button onClick={() => onDeleteClick(r)} className="text-slate-400 hover:text-red-600 transition" title="Delete" aria-label="Delete record">
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                  <ChevronRight size={16} className="text-slate-300"/>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -90,61 +142,245 @@ export function ModulePage({ module }: { module: string }) {
   const d = { ...moduleData[module] || moduleData.patients };
   
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{ type: 'admit' | 'discharge', patientId: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
   
-  const { data: stats } = useSWR(isPatients ? '/patients/stats' : null, fetcher, { refreshInterval: 5000 });
-  const { data: patients, mutate: mutatePatients } = useSWR(isPatients ? '/patients' : null, fetcher, { refreshInterval: 5000 });
+  // Dynamic fetches
+  const { data: stats } = useSWR(`/${module === 'settings' ? 'settings' : module}/stats`, fetcher, { refreshInterval: 5000 });
+  const { data: listData, mutate } = useSWR(`/${module === 'settings' ? 'settings' : module}`, fetcher, { refreshInterval: 5000 });
   const { data: beds } = useSWR(isPatients && actionModal?.type === 'admit' ? '/beds/available' : null, fetcher);
 
+  // Dropdown list requirements
+  const needDepts = ['appointments', 'doctors'].includes(module);
+  const needDocs = ['appointments'].includes(module);
+  const needPats = ['appointments', 'billing', 'laboratory'].includes(module);
+  const needTests = ['laboratory'].includes(module);
+  const needRoles = ['settings'].includes(module);
+
+  const { data: departments } = useSWR(needDepts ? '/departments' : null, fetcher);
+  const { data: doctorsList } = useSWR(needDocs ? '/doctors-list' : null, fetcher);
+  const { data: patientsList } = useSWR(needPats ? '/patients-list' : null, fetcher);
+  const { data: labtests } = useSWR(needTests ? '/labtests' : null, fetcher);
+  const { data: roles } = useSWR(needRoles ? '/roles' : null, fetcher);
+
   // Apply real-time stats
-  if (isPatients && stats) {
-    d.stats = [
-      ['Total patients', stats.totalPatients.toLocaleString()],
-      ['New this month', stats.newThisMonth.toLocaleString()],
-      ['Inpatients', stats.inpatients.toLocaleString()],
-      ['Discharged today', stats.dischargedToday.toLocaleString()]
-    ];
-  }
-
-  // Map API patients to rows
-  let displayRows = d.rows;
-  interface Patient {
-    id: string;
-    patientCode?: string | null;
-    firstName: string;
-    lastName: string;
-    dateOfBirth: string;
-    gender?: string | null;
-    admissions?: {
-      admittedAt: string;
-      dischargedAt?: string | null;
-    }[];
-  }
-  if (isPatients && patients && Array.isArray(patients)) {
-    displayRows = patients.map((p: Patient) => {
-      let status = 'Active';
-      let admittedDateStr = '';
-      const activeAdmission = p.admissions?.[0];
-      if (activeAdmission) {
-        if (!activeAdmission.dischargedAt) {
-          status = 'Admitted';
-        } else {
-          status = 'Discharged';
-        }
-        admittedDateStr = activeAdmission.admittedAt.split('T')[0];
-      }
-
-      return [
-        p.patientCode || 'NEW',
-        `${p.firstName} ${p.lastName}`,
-        `${new Date().getFullYear() - new Date(p.dateOfBirth).getFullYear()} years`,
-        p.gender || 'General',
-        status,
-        p.id, // hidden data
-        admittedDateStr // hidden data for date filtering
+  if (stats) {
+    if (module === 'patients') {
+      d.stats = [
+        ['Total patients', stats.totalPatients?.toLocaleString() || '0'],
+        ['New this month', stats.newThisMonth?.toLocaleString() || '0'],
+        ['Inpatients', stats.inpatients?.toLocaleString() || '0'],
+        ['Discharged today', stats.dischargedToday?.toLocaleString() || '0']
       ];
+    } else if (module === 'appointments') {
+      d.stats = [
+        ['Today', stats.today?.toLocaleString() || '0'],
+        ['Waiting', stats.waiting?.toLocaleString() || '0'],
+        ['Completed', stats.completed?.toLocaleString() || '0'],
+        ['Cancelled', stats.cancelled?.toLocaleString() || '0']
+      ];
+    } else if (module === 'doctors') {
+      d.stats = [
+        ['Total doctors', stats.totalDoctors?.toLocaleString() || '0'],
+        ['On duty', stats.onDuty?.toLocaleString() || '0'],
+        ['In consultation', stats.inConsultation?.toLocaleString() || '0'],
+        ['On leave', stats.onLeave?.toLocaleString() || '0']
+      ];
+    } else if (module === 'billing') {
+      d.stats = [
+        ['Today’s revenue', stats.todayRevenue || '₹0'],
+        ['Pending', stats.pending || '₹0'],
+        ['Insurance claims', stats.insurance?.toLocaleString() || '0'],
+        ['Paid invoices', stats.paid?.toLocaleString() || '0']
+      ];
+    } else if (module === 'pharmacy') {
+      d.stats = [
+        ['Medicines', stats.medicines?.toLocaleString() || '0'],
+        ['Low stock', stats.lowStock?.toLocaleString() || '0'],
+        ['Expiring soon', stats.expiringSoon?.toLocaleString() || '0'],
+        ['Today’s sales', stats.sales || '₹0']
+      ];
+    } else if (module === 'laboratory') {
+      d.stats = [
+        ['Tests today', stats.testsToday?.toLocaleString() || '0'],
+        ['Results ready', stats.resultsReady?.toLocaleString() || '0'],
+        ['Pending', stats.pending?.toLocaleString() || '0'],
+        ['Critical', stats.critical?.toLocaleString() || '0']
+      ];
+    } else if (module === 'staff') {
+      d.stats = [
+        ['Total staff', stats.totalStaff?.toLocaleString() || '0'],
+        ['Present today', stats.presentToday?.toLocaleString() || '0'],
+        ['On leave', stats.onLeave?.toLocaleString() || '0'],
+        ['Open positions', stats.openPositions?.toLocaleString() || '0']
+      ];
+    } else if (module === 'wards') {
+      d.stats = [
+        ['Total beds', stats.totalBeds?.toLocaleString() || '0'],
+        ['Occupied', stats.occupied?.toLocaleString() || '0'],
+        ['Available', stats.available?.toLocaleString() || '0'],
+        ['Discharges today', stats.dischargesToday?.toLocaleString() || '0']
+      ];
+    } else if (module === 'emergency') {
+      d.stats = [
+        ['Active cases', stats.activeCases?.toLocaleString() || '0'],
+        ['Critical', stats.critical?.toLocaleString() || '0'],
+        ['Ambulances active', stats.ambulancesActive?.toLocaleString() || '0'],
+        ['Avg. response', stats.avgResponse || '—']
+      ];
+    } else if (module === 'settings') {
+      d.stats = [
+        ['Active users', stats.activeUsers?.toLocaleString() || '0'],
+        ['Roles', stats.roles?.toLocaleString() || '0'],
+        ['Branches', stats.branches?.toLocaleString() || '0'],
+        ['Audit events today', stats.auditEventsToday?.toLocaleString() || '0']
+      ];
+    }
+  }
+
+  // Map API data to display rows
+  let displayRows = d.rows;
+
+  if (listData && Array.isArray(listData)) {
+    displayRows = listData.map((item: any) => {
+      let r: string[] = [];
+      switch (module) {
+        case 'patients': {
+          let status = 'Active';
+          let admittedDateStr = '';
+          const activeAdmission = item.admissions?.[0];
+          if (activeAdmission) {
+            status = activeAdmission.dischargedAt ? 'Discharged' : 'Admitted';
+            admittedDateStr = activeAdmission.admittedAt.split('T')[0];
+          }
+          r = [
+            item.patientCode || 'VH-NEW',
+            `${item.firstName} ${item.lastName}`,
+            item.dateOfBirth ? `${new Date().getFullYear() - new Date(item.dateOfBirth).getFullYear()} years` : '—',
+            item.gender || 'General',
+            status,
+            item.id,
+            admittedDateStr
+          ];
+          break;
+        }
+        case 'appointments': {
+          const formattedDate = item.scheduledAt 
+            ? new Date(item.scheduledAt).toLocaleDateString() + ' ' + new Date(item.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '—';
+          r = [
+            formattedDate,
+            item.patient ? `${item.patient.firstName} ${item.patient.lastName}` : 'Unknown Patient',
+            item.doctor?.user?.name || 'Unknown Doctor',
+            item.department?.name || 'General',
+            item.status || 'SCHEDULED',
+            item.id
+          ];
+          break;
+        }
+        case 'doctors': {
+          r = [
+            item.user?.name || 'Dr. Unknown',
+            item.department?.name || item.specialization || 'General',
+            item.qualification || 'MBBS',
+            `${item.experienceYears || 0} years exp`,
+            item.user?.status || 'Active',
+            item.id
+          ];
+          break;
+        }
+        case 'billing': {
+          r = [
+            item.invoiceNumber || 'INV-TEMP',
+            item.patient ? `${item.patient.firstName} ${item.patient.lastName}` : 'General Patient',
+            item.items?.[0]?.description || 'Medical Services',
+            `₹${Number(item.total).toLocaleString()}`,
+            item.status || 'ISSUED',
+            item.id
+          ];
+          break;
+        }
+        case 'pharmacy': {
+          const qty = item.inventory?.reduce((sum: number, inv: any) => sum + inv.quantity, 0) ?? 0;
+          const expiryStr = item.inventory?.[0]?.expiryDate 
+            ? new Date(item.inventory[0].expiryDate).toLocaleDateString([], { month: 'short', year: 'numeric' })
+            : '—';
+          r = [
+            item.sku || 'MED-NEW',
+            item.name,
+            `${qty} units`,
+            expiryStr,
+            qty > 20 ? 'In stock' : 'Low stock',
+            item.id
+          ];
+          break;
+        }
+        case 'laboratory': {
+          r = [
+            `LAB-${item.id.slice(0, 4).toUpperCase()}`,
+            item.patient ? `${item.patient.firstName} ${item.patient.lastName}` : 'Patient',
+            item.test?.name || 'Lab Test',
+            item.priority || 'NORMAL',
+            item.status || 'ORDERED',
+            item.id
+          ];
+          break;
+        }
+        case 'staff': {
+          r = [
+            item.employeeCode || 'EMP-NEW',
+            item.user?.name || 'Staff Member',
+            item.designation || 'Specialist',
+            'Main Branch',
+            item.user?.status || 'Active',
+            item.id
+          ];
+          break;
+        }
+        case 'wards': {
+          const occupant = item.admissions?.[0]?.patient;
+          r = [
+            item.room?.roomNumber ? `${item.room.roomNumber} - Bed ${item.bedNumber}` : `Bed ${item.bedNumber}`,
+            item.room?.type || 'Ward',
+            occupant ? `${occupant.firstName} ${occupant.lastName}` : '—',
+            item.status === 'OCCUPIED' ? 'Admitted' : '—',
+            item.status || 'AVAILABLE',
+            item.id
+          ];
+          break;
+        }
+        case 'emergency': {
+          r = [
+            item.caseNumber || 'ER-NEW',
+            item.patientName || 'Emergency Patient',
+            item.phone || '—',
+            item.priority || 'HIGH',
+            item.status || 'ACTIVE',
+            item.id
+          ];
+          break;
+        }
+        case 'settings': {
+          r = [
+            item.name || 'User',
+            item.email || '—',
+            item.role?.name || 'User',
+            item.branch?.name || 'Main Branch',
+            item.status || 'ACTIVE',
+            item.id
+          ];
+          break;
+        }
+        default: {
+          r = [item.id, 'Record', '—', '—', 'Active', item.id];
+        }
+      }
+      return r;
     });
   }
 
@@ -152,8 +388,6 @@ export function ModulePage({ module }: { module: string }) {
   const filteredRows = displayRows.filter(row => {
     const matchesSearch = row.slice(0, 5).some(cell => String(cell).toLowerCase().includes(searchTerm.toLowerCase()));
     if (!isPatients || !filterDate) return matchesSearch;
-    
-    // date filtering: check if the patient's admission date matches filterDate
     const admitDate = row[6];
     return matchesSearch && admitDate === filterDate;
   });
@@ -170,24 +404,58 @@ export function ModulePage({ module }: { module: string }) {
     link.remove();
   };
 
-  const handleAddPatient = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>, isEdit: boolean) => {
     e.preventDefault();
     const form = e.currentTarget;
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData);
+    
+    const url = isEdit 
+      ? `${apiUrl}/${module === 'settings' ? 'settings' : module}/${editingItem.id}` 
+      : `${apiUrl}/${module === 'settings' ? 'settings' : module}`;
+    const method = isEdit ? 'PUT' : 'POST';
+
     try {
-      const res = await fetch(`${apiUrl}/patients`, {
-        method: 'POST',
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('vasavi-token') || ''}`,
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Failed to add patient');
-      await mutatePatients();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to ${isEdit ? 'update' : 'create'} record`);
+      }
+      await mutate();
       setShowAddModal(false);
-    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+      setShowEditModal(false);
+      setEditingItem(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deletingItemId) return;
+    try {
+      const res = await fetch(`${apiUrl}/${module === 'settings' ? 'settings' : module}/${deletingItemId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('vasavi-token') || ''}`,
+        },
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to delete record');
+      }
+      await mutate();
+      setShowDeleteModal(false);
+      setDeletingItemId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const executeAction = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -210,7 +478,7 @@ export function ModulePage({ module }: { module: string }) {
         const errData = await res.json().catch(()=>({}));
         throw new Error(errData.message || `Failed to ${actionModal.type} patient`);
       }
-      await mutatePatients();
+      await mutate();
       setActionModal(null);
     } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
   };
@@ -226,13 +494,300 @@ export function ModulePage({ module }: { module: string }) {
     }
   };
 
+  const handleEditClick = (row: string[]) => {
+    const id = row[5];
+    const item = listData?.find((x: any) => x.id === id);
+    if (item) {
+      setEditingItem(item);
+      setShowEditModal(true);
+    }
+  };
+
+  const handleDeleteClick = (row: string[]) => {
+    const id = row[5];
+    setDeletingItemId(id);
+    setShowDeleteModal(true);
+  };
+
+  const renderFormFields = (item?: any) => {
+    switch (module) {
+      case 'patients':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">First Name
+              <input name="firstName" defaultValue={item?.firstName || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Last Name
+              <input name="lastName" defaultValue={item?.lastName || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Phone
+              <input name="phone" defaultValue={item?.phone || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Date of Birth
+              <input name="dateOfBirth" type="date" defaultValue={item?.dateOfBirth ? new Date(item.dateOfBirth).toISOString().split('T')[0] : ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Gender
+              <select name="gender" defaultValue={item?.gender || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Select gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+          </>
+        );
+      case 'appointments':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Select Patient
+              <select name="patientId" defaultValue={item?.patientId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose patient...</option>
+                {patientsList?.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.patientCode})</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Select Doctor
+              <select name="doctorId" defaultValue={item?.doctorId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose doctor...</option>
+                {doctorsList?.map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.user?.name} - {d.specialization}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Select Department
+              <select name="departmentId" defaultValue={item?.departmentId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose department...</option>
+                {departments?.map((dep: any) => (
+                  <option key={dep.id} value={dep.id}>{dep.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Scheduled Date & Time
+              <input name="scheduledAt" type="datetime-local" defaultValue={item?.scheduledAt ? new Date(new Date(item.scheduledAt).getTime() - new Date(item.scheduledAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Notes
+              <textarea name="notes" defaultValue={item?.notes || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" rows={3}></textarea>
+            </label>
+          </>
+        );
+      case 'doctors':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Name
+              <input name="name" defaultValue={item?.user?.name || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Email
+              <input name="email" type="email" defaultValue={item?.user?.email || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Department
+              <select name="departmentId" defaultValue={item?.departmentId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose department...</option>
+                {departments?.map((dep: any) => (
+                  <option key={dep.id} value={dep.id}>{dep.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Qualification
+              <input name="qualification" defaultValue={item?.qualification || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Specialization
+              <input name="specialization" defaultValue={item?.specialization || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Experience (Years)
+              <input name="experienceYears" type="number" defaultValue={item?.experienceYears || 0} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Consultation Fee (₹)
+              <input name="consultationFee" type="number" defaultValue={item?.consultationFee || 500} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">License Number
+              <input name="licenseNumber" defaultValue={item?.licenseNumber || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+          </>
+        );
+      case 'billing':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Select Patient
+              <select name="patientId" defaultValue={item?.patientId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose patient...</option>
+                {patientsList?.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.patientCode})</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Status
+              <select name="status" defaultValue={item?.status || 'ISSUED'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="DRAFT">DRAFT</option>
+                <option value="ISSUED">ISSUED</option>
+                <option value="PARTIALLY_PAID">PARTIALLY PAID</option>
+                <option value="PAID">PAID</option>
+                <option value="OVERDUE">OVERDUE</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Description
+              <input name="description" defaultValue={item?.items?.[0]?.description || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Total Amount (₹)
+              <input name="amount" type="number" defaultValue={item?.total || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+          </>
+        );
+      case 'pharmacy':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Medicine Name
+              <input name="name" defaultValue={item?.name || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Generic Name
+              <input name="genericName" defaultValue={item?.genericName || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">SKU
+              <input name="sku" defaultValue={item?.sku || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Quantity (Units)
+              <input name="quantity" type="number" defaultValue={item?.inventory?.[0]?.quantity || 100} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Unit Price (₹)
+              <input name="unitPrice" type="number" defaultValue={item?.unitPrice || 0} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+          </>
+        );
+      case 'laboratory':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Select Patient
+              <select name="patientId" defaultValue={item?.patientId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose patient...</option>
+                {patientsList?.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.patientCode})</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Select Test
+              <select name="testId" defaultValue={item?.testId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Choose test...</option>
+                {labtests?.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.name} (₹{t.price})</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Priority
+              <select name="priority" defaultValue={item?.priority || 'NORMAL'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="LOW">LOW</option>
+                <option value="NORMAL">NORMAL</option>
+                <option value="HIGH">HIGH</option>
+                <option value="CRITICAL">CRITICAL</option>
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Status
+              <input name="status" defaultValue={item?.status || 'ORDERED'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+          </>
+        );
+      case 'staff':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Name
+              <input name="name" defaultValue={item?.user?.name || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Email
+              <input name="email" type="email" defaultValue={item?.user?.email || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Designation
+              <input name="designation" defaultValue={item?.designation || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Employee Code
+              <input name="employeeCode" defaultValue={item?.employeeCode || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+          </>
+        );
+      case 'wards':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Room Number
+              <input name="roomNumber" defaultValue={item?.room?.roomNumber || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Room Type
+              <input name="roomType" defaultValue={item?.room?.type || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Bed Number
+              <input name="bedNumber" defaultValue={item?.bedNumber || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Status
+              <select name="status" defaultValue={item?.status || 'AVAILABLE'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="AVAILABLE">AVAILABLE</option>
+                <option value="OCCUPIED">OCCUPIED</option>
+                <option value="RESERVED">RESERVED</option>
+                <option value="MAINTENANCE">MAINTENANCE</option>
+              </select>
+            </label>
+          </>
+        );
+      case 'emergency':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Patient Name
+              <input name="patientName" defaultValue={item?.patientName || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Phone
+              <input name="phone" defaultValue={item?.phone || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Priority
+              <select name="priority" defaultValue={item?.priority || 'HIGH'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="LOW">LOW</option>
+                <option value="NORMAL">NORMAL</option>
+                <option value="HIGH">HIGH</option>
+                <option value="CRITICAL">CRITICAL</option>
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Status
+              <input name="status" defaultValue={item?.status || 'ACTIVE'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Details / Emergency Doctor
+              <input name="details" defaultValue={item?.details || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" />
+            </label>
+          </>
+        );
+      case 'settings':
+        return (
+          <>
+            <label className="block text-xs font-semibold text-slate-600">Full Name
+              <input name="name" defaultValue={item?.name || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Email
+              <input name="email" type="email" defaultValue={item?.email || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Role
+              <select name="roleId" defaultValue={item?.roleId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="">Select role...</option>
+                {roles?.map((r: any) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">Status
+              <select name="status" defaultValue={item?.status || 'ACTIVE'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="INACTIVE">INACTIVE</option>
+                <option value="SUSPENDED">SUSPENDED</option>
+              </select>
+            </label>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <>
       <PageTitle 
         title={d.title} 
         text={d.text} 
         action={d.action} 
-        onAction={() => isPatients ? setShowAddModal(true) : null}
+        onAction={() => setShowAddModal(true)}
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {d.stats.map(([a, b], i) => (
@@ -267,38 +822,53 @@ export function ModulePage({ module }: { module: string }) {
           <Download size={15} /> Export
         </button>
       </div>
-      <TableCard title={`Recent ${d.title.toLowerCase()}`} rows={filteredRows} onStatusClick={isPatients ? handleStatusClick : undefined} />
+      <TableCard 
+        title={`Recent ${d.title.toLowerCase()}`} 
+        rows={filteredRows} 
+        onStatusClick={isPatients ? handleStatusClick : undefined}
+        onEditClick={handleEditClick}
+        onDeleteClick={handleDeleteClick}
+      />
       
-      {isPatients && showAddModal && (
+      {showAddModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
-          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
-            <h2 className="font-poppins text-xl font-semibold mb-5">Add New Patient</h2>
-            <form onSubmit={handleAddPatient} className="space-y-4">
-              <label className="block text-xs font-semibold text-slate-600">First Name
-                <input name="firstName" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
-              </label>
-              <label className="block text-xs font-semibold text-slate-600">Last Name
-                <input name="lastName" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
-              </label>
-              <label className="block text-xs font-semibold text-slate-600">Phone
-                <input name="phone" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
-              </label>
-              <label className="block text-xs font-semibold text-slate-600">Date of Birth
-                <input name="dateOfBirth" type="date" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
-              </label>
-              <label className="block text-xs font-semibold text-slate-600">Gender
-                <select name="gender" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
-                  <option value="">Select gender</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </label>
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft max-h-[85vh] overflow-y-auto">
+            <h2 className="font-poppins text-xl font-semibold mb-5">Add New {module.charAt(0).toUpperCase() + module.slice(1)}</h2>
+            <form onSubmit={(e) => handleFormSubmit(e, false)} className="space-y-4">
+              {renderFormFields()}
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
                 <button type="button" className="btn-secondary !px-4" onClick={() => setShowAddModal(false)}>Cancel</button>
-                <button type="submit" className="btn-primary !px-6">Save Patient</button>
+                <button type="submit" className="btn-primary !px-6">Save</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && editingItem && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft max-h-[85vh] overflow-y-auto">
+            <h2 className="font-poppins text-xl font-semibold mb-5">Edit {module.charAt(0).toUpperCase() + module.slice(1)}</h2>
+            <form onSubmit={(e) => handleFormSubmit(e, true)} className="space-y-4">
+              {renderFormFields(editingItem)}
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                <button type="button" className="btn-secondary !px-4" onClick={() => { setShowEditModal(false); setEditingItem(null); }}>Cancel</button>
+                <button type="submit" className="btn-primary !px-6">Update</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-sm shadow-soft">
+            <h2 className="font-poppins text-xl font-semibold mb-2">Delete {module.charAt(0).toUpperCase() + module.slice(1)}</h2>
+            <p className="text-sm text-slate-500 mb-6">Are you sure you want to delete this record? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+              <button type="button" className="btn-secondary !px-4" onClick={() => { setShowDeleteModal(false); setDeletingItemId(null); }}>Cancel</button>
+              <button type="button" className="btn-primary !px-6 bg-red-600 hover:bg-red-700 border-red-600 hover:border-red-700 text-white" onClick={executeDelete}>Delete</button>
+            </div>
           </div>
         </div>
       )}

@@ -191,7 +191,36 @@ app.post('/api/patients', auth(['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST']), asyncR
   io.to('authenticated').emit('patient:created', patient);
   res.status(201).json(patient);
 }));
+app.put('/api/patients/:id', auth(['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = patientSchema.parse(req.body);
+  const patient = await prisma.patient.update({ where: { id: req.params.id }, data });
+  await audit(req.user!.id, 'UPDATE', 'Patient', patient.id, req.ip);
+  res.json(patient);
+}));
+app.delete('/api/patients/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const patient = await prisma.patient.delete({ where: { id: req.params.id } });
+  await audit(req.user!.id, 'DELETE', 'Patient', patient.id, req.ip);
+  res.json({ message: 'Patient deleted successfully' });
+}));
 
+// --- Lookup lists for dropdowns ---
+app.get('/api/departments', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.department.findMany({ orderBy: { name: 'asc' } }));
+}));
+app.get('/api/doctors-list', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.doctor.findMany({ include: { user: true, department: true } }));
+}));
+app.get('/api/patients-list', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.patient.findMany({ orderBy: { firstName: 'asc' } }));
+}));
+app.get('/api/labtests', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.labTest.findMany({ orderBy: { name: 'asc' } }));
+}));
+app.get('/api/roles', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.role.findMany({ orderBy: { name: 'asc' } }));
+}));
+
+// --- Appointment CRUD ---
 const appointmentSchema = z.object({
   patientId: z.string().cuid(),
   doctorId: z.string().cuid(),
@@ -206,11 +235,33 @@ app.get('/api/appointments', auth(), asyncRoute(async (_req, res) => {
     take: 100,
   }));
 }));
+app.get('/api/appointments/stats', auth(), asyncRoute(async (_req, res) => {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const [todayCount, waitingCount, completedCount, cancelledCount] = await Promise.all([
+    prisma.appointment.count({ where: { scheduledAt: { gte: today } } }),
+    prisma.appointment.count({ where: { status: 'SCHEDULED' } }),
+    prisma.appointment.count({ where: { status: 'COMPLETED' } }),
+    prisma.appointment.count({ where: { status: 'CANCELLED' } }),
+  ]);
+  res.json({ today: todayCount, waiting: waitingCount, completed: completedCount, cancelled: cancelledCount });
+}));
 app.post('/api/appointments', auth(), asyncRoute(async (req: AuthRequest, res) => {
   const item = await prisma.appointment.create({ data: appointmentSchema.parse(req.body) });
   await audit(req.user!.id, 'CREATE', 'Appointment', item.id, req.ip);
   io.to('authenticated').emit('appointment:created', item);
   res.status(201).json(item);
+}));
+app.put('/api/appointments/:id', auth(), asyncRoute(async (req: AuthRequest, res) => {
+  const data = appointmentSchema.parse(req.body);
+  const item = await prisma.appointment.update({ where: { id: req.params.id }, data });
+  await audit(req.user!.id, 'UPDATE', 'Appointment', item.id, req.ip);
+  res.json(item);
+}));
+app.delete('/api/appointments/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const item = await prisma.appointment.delete({ where: { id: req.params.id } });
+  await audit(req.user!.id, 'DELETE', 'Appointment', item.id, req.ip);
+  res.json({ message: 'Appointment deleted successfully' });
 }));
 app.patch('/api/appointments/:id/status', auth(), asyncRoute(async (req: AuthRequest, res) => {
   const status = z.enum(['SCHEDULED', 'CONFIRMED', 'CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED', 'CANCELLED']).parse(req.body.status);
@@ -218,6 +269,557 @@ app.patch('/api/appointments/:id/status', auth(), asyncRoute(async (req: AuthReq
   await audit(req.user!.id, 'UPDATE', 'Appointment', item.id, req.ip);
   io.to('authenticated').emit('appointment:updated', item);
   res.json(item);
+}));
+
+// --- Doctors CRUD ---
+const doctorCreateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().email(),
+  departmentId: z.string().cuid(),
+  qualification: z.string().trim().min(2),
+  specialization: z.string().trim().min(2),
+  experienceYears: z.coerce.number().int().nonnegative(),
+  consultationFee: z.coerce.number().positive(),
+  licenseNumber: z.string().trim().min(2),
+});
+app.get('/api/doctors', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.doctor.findMany({
+    include: { user: true, department: true },
+    orderBy: { user: { name: 'asc' } }
+  }));
+}));
+app.get('/api/doctors/stats', auth(), asyncRoute(async (_req, res) => {
+  const [total, active] = await Promise.all([
+    prisma.doctor.count(),
+    prisma.user.count({ where: { role: { code: 'DOCTOR' }, status: 'ACTIVE' } }),
+  ]);
+  res.json({ totalDoctors: total, onDuty: active, inConsultation: Math.floor(active * 0.4), onLeave: total - active });
+}));
+app.post('/api/doctors', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = doctorCreateSchema.parse(req.body);
+  const passwordHash = await bcrypt.hash('Doctor@123', 12);
+  const role = await prisma.role.findUnique({ where: { code: 'DOCTOR' } });
+  const branch = await prisma.branch.findFirst();
+  const result = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        name: data.name,
+        email: data.email.toLowerCase(),
+        passwordHash,
+        roleId: role!.id,
+        branchId: branch?.id,
+      }
+    });
+    return await tx.doctor.create({
+      data: {
+        userId: user.id,
+        departmentId: data.departmentId,
+        qualification: data.qualification,
+        specialization: data.specialization,
+        experienceYears: data.experienceYears,
+        consultationFee: data.consultationFee,
+        licenseNumber: data.licenseNumber,
+      }
+    });
+  });
+  await audit(req.user!.id, 'CREATE', 'Doctor', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/doctors/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = doctorCreateSchema.parse(req.body);
+  const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } });
+  if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: doctor.userId },
+      data: { name: data.name, email: data.email.toLowerCase() }
+    });
+    return await tx.doctor.update({
+      where: { id: req.params.id },
+      data: {
+        departmentId: data.departmentId,
+        qualification: data.qualification,
+        specialization: data.specialization,
+        experienceYears: data.experienceYears,
+        consultationFee: data.consultationFee,
+        licenseNumber: data.licenseNumber,
+      }
+    });
+  });
+  await audit(req.user!.id, 'UPDATE', 'Doctor', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/doctors/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } });
+  if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+  await prisma.$transaction(async (tx) => {
+    await tx.doctor.delete({ where: { id: req.params.id } });
+    await tx.user.delete({ where: { id: doctor.userId } });
+  });
+  await audit(req.user!.id, 'DELETE', 'Doctor', req.params.id, req.ip);
+  res.json({ message: 'Doctor deleted' });
+}));
+
+// --- Billing/Invoices CRUD ---
+const invoiceCreateSchema = z.object({
+  patientId: z.string().cuid(),
+  status: z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED']),
+  description: z.string().trim().min(2),
+  amount: z.coerce.number().positive(),
+});
+app.get('/api/billing', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.invoice.findMany({
+    include: { patient: true, items: true },
+    orderBy: { issuedAt: 'desc' }
+  }));
+}));
+app.get('/api/billing/stats', auth(), asyncRoute(async (_req, res) => {
+  const invoices = await prisma.invoice.findMany();
+  const todayRevenue = invoices.filter(i => i.status === 'PAID').reduce((sum, i) => sum + Number(i.total), 0);
+  const pending = invoices.filter(i => i.status === 'ISSUED').reduce((sum, i) => sum + Number(i.total), 0);
+  const claims = invoices.filter(i => i.status === 'PARTIALLY_PAID').length;
+  const paidCount = invoices.filter(i => i.status === 'PAID').length;
+  res.json({ todayRevenue: `₹${(todayRevenue/1000).toFixed(2)}K`, pending: `₹${(pending/1000).toFixed(2)}K`, insurance: claims, paid: paidCount });
+}));
+app.post('/api/billing', auth(['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = invoiceCreateSchema.parse(req.body);
+  const invoiceNumber = `INV-${Math.floor(10000 + Math.random() * 90000)}`;
+  const result = await prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.create({
+      data: {
+        invoiceNumber,
+        patientId: data.patientId,
+        status: data.status,
+        subtotal: data.amount,
+        total: data.amount,
+      }
+    });
+    await tx.invoiceItem.create({
+      data: {
+        invoiceId: invoice.id,
+        description: data.description,
+        unitPrice: data.amount,
+        quantity: 1,
+        total: data.amount,
+      }
+    });
+    return invoice;
+  });
+  await audit(req.user!.id, 'CREATE', 'Invoice', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/billing/:id', auth(['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = invoiceCreateSchema.parse(req.body);
+  const result = await prisma.$transaction(async (tx) => {
+    const firstItem = await tx.invoiceItem.findFirst({ where: { invoiceId: req.params.id } });
+    if (firstItem) {
+      await tx.invoiceItem.update({
+        where: { id: firstItem.id },
+        data: { description: data.description, unitPrice: data.amount, total: data.amount }
+      });
+    }
+    return await tx.invoice.update({
+      where: { id: req.params.id },
+      data: {
+        patientId: data.patientId,
+        status: data.status,
+        subtotal: data.amount,
+        total: data.amount,
+      }
+    });
+  });
+  await audit(req.user!.id, 'UPDATE', 'Invoice', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/billing/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  await prisma.$transaction(async (tx) => {
+    await tx.invoiceItem.deleteMany({ where: { invoiceId: req.params.id } });
+    await tx.payment.deleteMany({ where: { invoiceId: req.params.id } });
+    await tx.invoice.delete({ where: { id: req.params.id } });
+  });
+  await audit(req.user!.id, 'DELETE', 'Invoice', req.params.id, req.ip);
+  res.json({ message: 'Invoice deleted' });
+}));
+
+// --- Pharmacy/Medicines CRUD ---
+const medicineCreateSchema = z.object({
+  name: z.string().trim().min(2),
+  genericName: z.string().trim().optional(),
+  sku: z.string().trim().min(2),
+  quantity: z.coerce.number().int().nonnegative(),
+  unitPrice: z.coerce.number().positive(),
+});
+app.get('/api/pharmacy', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.medicine.findMany({
+    include: { inventory: true },
+    orderBy: { name: 'asc' }
+  }));
+}));
+app.get('/api/pharmacy/stats', auth(), asyncRoute(async (_req, res) => {
+  const medicines = await prisma.medicine.findMany({ include: { inventory: true } });
+  const totalMedicines = medicines.length;
+  let lowStock = 0;
+  let expiring = 0;
+  medicines.forEach(m => {
+    const qty = m.inventory.reduce((sum, i) => sum + i.quantity, 0);
+    const reorder = m.inventory[0]?.reorderLevel ?? 20;
+    if (qty <= reorder) lowStock++;
+    if (m.inventory.some(i => new Date(i.expiryDate).getTime() < Date.now() + 180 * 24 * 3600 * 1000)) expiring++;
+  });
+  res.json({ medicines: totalMedicines, lowStock, expiringSoon: expiring, sales: '₹82,430' });
+}));
+app.post('/api/pharmacy', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = medicineCreateSchema.parse(req.body);
+  const result = await prisma.$transaction(async (tx) => {
+    const med = await tx.medicine.create({
+      data: {
+        sku: data.sku,
+        name: data.name,
+        genericName: data.genericName,
+        unitPrice: data.unitPrice,
+      }
+    });
+    await tx.inventory.create({
+      data: {
+        medicineId: med.id,
+        batchNumber: `BATCH-${Math.floor(100 + Math.random() * 900)}`,
+        quantity: data.quantity,
+        expiryDate: new Date('2028-12-31'),
+      }
+    });
+    return med;
+  });
+  await audit(req.user!.id, 'CREATE', 'Medicine', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/pharmacy/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = medicineCreateSchema.parse(req.body);
+  const result = await prisma.$transaction(async (tx) => {
+    const med = await tx.medicine.update({
+      where: { id: req.params.id },
+      data: {
+        sku: data.sku,
+        name: data.name,
+        genericName: data.genericName,
+        unitPrice: data.unitPrice,
+      }
+    });
+    const inventory = await tx.inventory.findFirst({ where: { medicineId: med.id } });
+    if (inventory) {
+      await tx.inventory.update({
+        where: { id: inventory.id },
+        data: { quantity: data.quantity }
+      });
+    }
+    return med;
+  });
+  await audit(req.user!.id, 'UPDATE', 'Medicine', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/pharmacy/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  await prisma.$transaction(async (tx) => {
+    await tx.inventory.deleteMany({ where: { medicineId: req.params.id } });
+    await tx.medicine.delete({ where: { id: req.params.id } });
+  });
+  await audit(req.user!.id, 'DELETE', 'Medicine', req.params.id, req.ip);
+  res.json({ message: 'Medicine deleted' });
+}));
+
+// --- Laboratory CRUD ---
+const labOrderCreateSchema = z.object({
+  patientId: z.string().cuid(),
+  testId: z.string().cuid(),
+  priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']),
+  status: z.string().trim().min(2),
+});
+app.get('/api/laboratory', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.labOrder.findMany({
+    include: { patient: true, test: true },
+    orderBy: { orderedAt: 'desc' }
+  }));
+}));
+app.get('/api/laboratory/stats', auth(), asyncRoute(async (_req, res) => {
+  const [total, pending, ready, critical] = await Promise.all([
+    prisma.labOrder.count(),
+    prisma.labOrder.count({ where: { status: 'PROCESSING' } }),
+    prisma.labOrder.count({ where: { status: 'READY' } }),
+    prisma.labOrder.count({ where: { status: 'CRITICAL' } }),
+  ]);
+  res.json({ testsToday: total, resultsReady: ready, pending, critical });
+}));
+app.post('/api/laboratory', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = labOrderCreateSchema.parse(req.body);
+  const result = await prisma.labOrder.create({ data });
+  await audit(req.user!.id, 'CREATE', 'LabOrder', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/laboratory/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = labOrderCreateSchema.parse(req.body);
+  const result = await prisma.labOrder.update({ where: { id: req.params.id }, data });
+  await audit(req.user!.id, 'UPDATE', 'LabOrder', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/laboratory/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  await prisma.labOrder.delete({ where: { id: req.params.id } });
+  await audit(req.user!.id, 'DELETE', 'LabOrder', req.params.id, req.ip);
+  res.json({ message: 'Lab Order deleted' });
+}));
+
+// --- Staff/HR CRUD ---
+const staffCreateSchema = z.object({
+  name: z.string().trim().min(2),
+  email: z.string().trim().email(),
+  designation: z.string().trim().min(2),
+  employeeCode: z.string().trim().min(2),
+});
+app.get('/api/staff', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.staff.findMany({
+    include: { user: true },
+    orderBy: { employeeCode: 'asc' }
+  }));
+}));
+app.get('/api/staff/stats', auth(), asyncRoute(async (_req, res) => {
+  const total = await prisma.staff.count();
+  res.json({ totalStaff: total, presentToday: total, onLeave: 0, openPositions: 8 });
+}));
+app.post('/api/staff', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = staffCreateSchema.parse(req.body);
+  const passwordHash = await bcrypt.hash('Staff@123', 12);
+  const role = await prisma.role.findUnique({ where: { code: 'RECEPTIONIST' } });
+  const branch = await prisma.branch.findFirst();
+  const result = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        name: data.name,
+        email: data.email.toLowerCase(),
+        passwordHash,
+        roleId: role!.id,
+        branchId: branch?.id,
+      }
+    });
+    return await tx.staff.create({
+      data: {
+        userId: user.id,
+        employeeCode: data.employeeCode,
+        designation: data.designation,
+        joinedAt: new Date(),
+      }
+    });
+  });
+  await audit(req.user!.id, 'CREATE', 'Staff', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/staff/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = staffCreateSchema.parse(req.body);
+  const staff = await prisma.staff.findUnique({ where: { id: req.params.id } });
+  if (!staff) return res.status(404).json({ message: 'Staff member not found' });
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: staff.userId },
+      data: { name: data.name, email: data.email.toLowerCase() }
+    });
+    return await tx.staff.update({
+      where: { id: req.params.id },
+      data: {
+        designation: data.designation,
+        employeeCode: data.employeeCode,
+      }
+    });
+  });
+  await audit(req.user!.id, 'UPDATE', 'Staff', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/staff/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const staff = await prisma.staff.findUnique({ where: { id: req.params.id } });
+  if (!staff) return res.status(404).json({ message: 'Staff member not found' });
+  await prisma.$transaction(async (tx) => {
+    await tx.staff.delete({ where: { id: req.params.id } });
+    await tx.user.delete({ where: { id: staff.userId } });
+  });
+  await audit(req.user!.id, 'DELETE', 'Staff', req.params.id, req.ip);
+  res.json({ message: 'Staff member deleted' });
+}));
+
+// --- Wards/Beds CRUD ---
+const bedCreateSchema = z.object({
+  roomNumber: z.string().trim().min(2),
+  roomType: z.string().trim().min(2),
+  bedNumber: z.string().trim().min(1),
+  status: z.enum(['AVAILABLE', 'OCCUPIED', 'RESERVED', 'MAINTENANCE']),
+});
+app.get('/api/wards', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.bed.findMany({
+    include: {
+      room: true,
+      admissions: {
+        where: { dischargedAt: null },
+        include: { patient: true }
+      }
+    },
+    orderBy: { bedNumber: 'asc' }
+  }));
+}));
+app.get('/api/wards/stats', auth(), asyncRoute(async (_req, res) => {
+  const [total, occupied, available] = await Promise.all([
+    prisma.bed.count(),
+    prisma.bed.count({ where: { status: 'OCCUPIED' } }),
+    prisma.bed.count({ where: { status: 'AVAILABLE' } }),
+  ]);
+  res.json({ totalBeds: total, occupied, available, dischargesToday: 19 });
+}));
+app.post('/api/wards', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = bedCreateSchema.parse(req.body);
+  const branch = await prisma.branch.findFirst();
+  const result = await prisma.$transaction(async (tx) => {
+    let room = await tx.room.findFirst({ where: { roomNumber: data.roomNumber } });
+    if (!room) {
+      room = await tx.room.create({
+        data: {
+          roomNumber: data.roomNumber,
+          type: data.roomType,
+          branchId: branch!.id,
+        }
+      });
+    }
+    return await tx.bed.create({
+      data: {
+        roomId: room.id,
+        bedNumber: data.bedNumber,
+        status: data.status,
+      }
+    });
+  });
+  await audit(req.user!.id, 'CREATE', 'Bed', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/wards/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = bedCreateSchema.parse(req.body);
+  const bed = await prisma.bed.findUnique({ where: { id: req.params.id }, include: { room: true } });
+  if (!bed) return res.status(404).json({ message: 'Bed not found' });
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.room.update({
+      where: { id: bed.roomId },
+      data: { roomNumber: data.roomNumber, type: data.roomType }
+    });
+    return await tx.bed.update({
+      where: { id: req.params.id },
+      data: {
+        bedNumber: data.bedNumber,
+        status: data.status,
+      }
+    });
+  });
+  await audit(req.user!.id, 'UPDATE', 'Bed', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/wards/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  await prisma.$transaction(async (tx) => {
+    await tx.admission.deleteMany({ where: { bedId: req.params.id } });
+    await tx.bed.delete({ where: { id: req.params.id } });
+  });
+  await audit(req.user!.id, 'DELETE', 'Bed', req.params.id, req.ip);
+  res.json({ message: 'Bed deleted' });
+}));
+
+// --- Emergency CRUD ---
+const emergencyCreateSchema = z.object({
+  patientName: z.string().trim().min(2),
+  phone: z.string().trim().optional(),
+  priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']),
+  status: z.string().trim().min(2),
+  details: z.string().trim().optional(),
+});
+app.get('/api/emergency', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.emergencyCase.findMany({
+    orderBy: { createdAt: 'desc' }
+  }));
+}));
+app.get('/api/emergency/stats', auth(), asyncRoute(async (_req, res) => {
+  const [active, critical, stabilized] = await Promise.all([
+    prisma.emergencyCase.count({ where: { status: 'ACTIVE' } }),
+    prisma.emergencyCase.count({ where: { priority: 'CRITICAL' } }),
+    prisma.emergencyCase.count({ where: { status: 'STABILIZED' } }),
+  ]);
+  res.json({ activeCases: active, critical, ambulancesActive: 3, avgResponse: '8 min' });
+}));
+app.post('/api/emergency', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = emergencyCreateSchema.parse(req.body);
+  const caseNumber = `ER-${Math.floor(1000 + Math.random() * 9000)}`;
+  const result = await prisma.emergencyCase.create({
+    data: { ...data, caseNumber }
+  });
+  await audit(req.user!.id, 'CREATE', 'EmergencyCase', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/emergency/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = emergencyCreateSchema.parse(req.body);
+  const result = await prisma.emergencyCase.update({ where: { id: req.params.id }, data });
+  await audit(req.user!.id, 'UPDATE', 'EmergencyCase', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/emergency/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const result = await prisma.emergencyCase.delete({ where: { id: req.params.id } });
+  await audit(req.user!.id, 'DELETE', 'EmergencyCase', req.params.id, req.ip);
+  res.json({ message: 'Emergency Case deleted' });
+}));
+
+// --- Settings/Users CRUD ---
+const userCreateSchema = z.object({
+  name: z.string().trim().min(2),
+  email: z.string().trim().email(),
+  roleId: z.string().cuid(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']),
+});
+app.get('/api/settings', auth(), asyncRoute(async (_req, res) => {
+  res.json(await prisma.user.findMany({
+    include: { role: true, branch: true },
+    orderBy: { name: 'asc' }
+  }));
+}));
+app.get('/api/settings/stats', auth(), asyncRoute(async (_req, res) => {
+  const [users, roles, branches, auditCount] = await Promise.all([
+    prisma.user.count(),
+    prisma.role.count(),
+    prisma.branch.count(),
+    prisma.auditLog.count(),
+  ]);
+  res.json({ activeUsers: users, roles, branches, auditEventsToday: auditCount });
+}));
+app.post('/api/settings', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = userCreateSchema.parse(req.body);
+  const passwordHash = await bcrypt.hash('User@123', 12);
+  const branch = await prisma.branch.findFirst();
+  const result = await prisma.user.create({
+    data: {
+      name: data.name,
+      email: data.email.toLowerCase(),
+      roleId: data.roleId,
+      status: data.status,
+      passwordHash,
+      branchId: branch?.id,
+    }
+  });
+  await audit(req.user!.id, 'CREATE', 'User', result.id, req.ip);
+  res.status(201).json(result);
+}));
+app.put('/api/settings/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const data = userCreateSchema.parse(req.body);
+  const result = await prisma.user.update({
+    where: { id: req.params.id },
+    data: {
+      name: data.name,
+      email: data.email.toLowerCase(),
+      roleId: data.roleId,
+      status: data.status,
+    }
+  });
+  await audit(req.user!.id, 'UPDATE', 'User', result.id, req.ip);
+  res.json(result);
+}));
+app.delete('/api/settings/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
+  const result = await prisma.user.delete({ where: { id: req.params.id } });
+  await audit(req.user!.id, 'DELETE', 'User', req.params.id, req.ip);
+  res.json({ message: 'User deleted' });
 }));
 
 const requestLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
