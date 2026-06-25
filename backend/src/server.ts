@@ -110,7 +110,7 @@ app.post('/api/auth/login', loginLimiter, asyncRoute(async (req, res) => {
   if (!user || user.status !== 'ACTIVE' || !(await bcrypt.compare(credentials.password, user.passwordHash))) {
     return res.status(401).json({ message: 'Invalid email or password' });
   }
-  const token = jwt.sign({ id: user.id, role: user.role.code }, secret, { expiresIn: '8h', issuer: 'vasavi-api', audience: 'vasavi-crm' });
+  const token = jwt.sign({ id: user.id, role: user.role.code }, secret, { expiresIn: '7d', issuer: 'vasavi-api', audience: 'vasavi-crm' });
   return res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role.code } });
 }));
 

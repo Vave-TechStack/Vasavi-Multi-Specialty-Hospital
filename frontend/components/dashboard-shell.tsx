@@ -26,7 +26,9 @@ export function DashboardShell({children}:{children:React.ReactNode}) {
   useEffect(() => {
     const token = localStorage.getItem('vasavi-token');
     try {
-      if (!token || !localStorage.getItem('vasavi-user') || tokenExpiry(token) * 1000 <= Date.now()) throw new Error('Expired session');
+      // Allow up to 24 hours of clock skew to prevent immediate logouts due to desynchronized system clocks
+      const skewToleranceMs = 24 * 60 * 60 * 1000;
+      if (!token || !localStorage.getItem('vasavi-user') || (tokenExpiry(token) * 1000) + skewToleranceMs <= Date.now()) throw new Error('Expired session');
     } catch {
       localStorage.removeItem('vasavi-user');
       localStorage.removeItem('vasavi-token');
