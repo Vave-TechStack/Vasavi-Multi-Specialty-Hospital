@@ -34,7 +34,7 @@ export function SiteHeader() {
           </div>
           <button aria-label="Open menu" className="rounded-xl border border-slate-200 p-2.5 sm:hidden" onClick={() => setOpen(!open)}>{open ? <X/> : <Menu/>}</button>
         </div>
-        {open && <nav className="container-pad flex flex-col gap-1 border-t border-slate-100 py-4 sm:hidden">{links.map(([label, href]) => <Link onClick={()=>setOpen(false)} className="rounded-xl px-4 py-3 font-medium hover:bg-slate-50" href={href} key={href}>{label}</Link>)}<button onClick={() => setShowModal(true)} className="btn-primary mt-2">Book Appointment</button></nav>}
+        {open && <nav className="container-pad flex flex-col gap-1 border-t border-slate-100 py-4 sm:hidden">{links.map(([label, href]) => <Link onClick={()=>setOpen(false)} className="rounded-xl px-4 py-3 font-medium hover:bg-slate-50" href={href} key={href}>{label}</Link>)}<Link href="/login" onClick={()=>setOpen(false)} className="rounded-xl px-4 py-3 font-medium text-primary hover:bg-slate-50">Login</Link><button onClick={() => setShowModal(true)} className="btn-primary mt-2">Book Appointment</button></nav>}
       </header>{showModal && <AppointmentModal onClose={() => setShowModal(false)} />}
     </>
   );
