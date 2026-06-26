@@ -937,13 +937,13 @@ app.delete('/api/requests/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async
   res.json({ message: 'Appointment request deleted successfully' });
 }));
 
-const requestLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
+const requestLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
 const appointmentRequestSchema = z.object({
   patientName: z.string().trim().min(2).max(120),
   phone: z.string().trim().min(8).max(20),
   department: z.string().trim().min(2).max(100),
   preferredDoctor: z.string().trim().max(120).optional(),
-  preferredDate: z.coerce.date().min(startOfToday),
+  preferredDate: z.coerce.date(),
 });
 app.post('/api/public/appointment-requests', requestLimiter, asyncRoute(async (req, res) => {
   const data = appointmentRequestSchema.parse(req.body);

@@ -47,7 +47,7 @@ export function AppointmentForm({ compact = false }: { compact?: boolean }) {
       <input name="phone" required minLength={8} maxLength={20} autoComplete="tel" type="tel" placeholder="Phone number" className="rounded-xl border-slate-200 px-4 py-3 text-sm focus:border-primary focus:ring-primary"/>
       <select name="department" required defaultValue="" className="rounded-xl border-slate-200 px-4 py-3 text-sm focus:border-primary focus:ring-primary"><option value="" disabled>Select department</option>{departments.map(d=><option key={d.name}>{d.name}</option>)}</select>
       <select name="preferredDoctor" defaultValue="" className="rounded-xl border-slate-200 px-4 py-3 text-sm focus:border-primary focus:ring-primary"><option value="">Preferred doctor</option>{doctors.map(d=><option key={d.name}>{d.name}</option>)}</select>
-      <input name="preferredDate" aria-label="Preferred appointment date" required type="date" min={new Date().toISOString().slice(0, 10)} className="rounded-xl border-slate-200 px-4 py-3 text-sm focus:border-primary focus:ring-primary"/>
+      <input name="preferredDate" aria-label="Preferred appointment date" required type="date" className="rounded-xl border-slate-200 px-4 py-3 text-sm focus:border-primary focus:ring-primary"/>
       <button disabled={status === 'sending'} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
         {status === 'sending' ? <><LoaderCircle className="animate-spin" size={16}/> Sending...</> : <>Request appointment <ArrowRight size={16}/></>}
       </button>
