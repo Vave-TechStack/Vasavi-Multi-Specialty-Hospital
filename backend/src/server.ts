@@ -11,7 +11,6 @@ import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
-import PDFDocument from 'pdfkit';
 import { PrismaClient } from '@prisma/client';
 import { z, ZodError } from 'zod';
 import { seed } from './seed';
@@ -68,7 +67,7 @@ type AsyncRouteHandler = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
-) => Promise<any> | any;
+) => Promise<unknown> | unknown;
 
 const startOfToday = new Date();
 startOfToday.setHours(0, 0, 0, 0);
@@ -915,7 +914,7 @@ app.put('/api/emergency/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (
   res.json(result);
 }));
 app.delete('/api/emergency/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
-  const result = await prisma.emergencyCase.delete({ where: { id: req.params.id } });
+  await prisma.emergencyCase.delete({ where: { id: req.params.id } });
   await audit(req.user!.id, 'DELETE', 'EmergencyCase', req.params.id, req.ip);
   res.json({ message: 'Emergency Case deleted' });
 }));
@@ -974,7 +973,7 @@ app.put('/api/settings/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (r
   res.json(result);
 }));
 app.delete('/api/settings/:id', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: AuthRequest, res) => {
-  const result = await prisma.user.delete({ where: { id: req.params.id } });
+  await prisma.user.delete({ where: { id: req.params.id } });
   await audit(req.user!.id, 'DELETE', 'User', req.params.id, req.ip);
   res.json({ message: 'User deleted' });
 }));
