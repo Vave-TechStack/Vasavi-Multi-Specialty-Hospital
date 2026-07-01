@@ -191,6 +191,7 @@ model InvoiceItem {
   id          String  @id @default(cuid())
   invoiceId   String
   description String
+  category    InvoiceItemCategory
   quantity    Int     @default(1)
   unitPrice   Decimal @db.Decimal(12, 2)
   total       Decimal @db.Decimal(12, 2)
@@ -279,6 +280,7 @@ model Room {
   branchId   String
   roomNumber String
   type       String
+  dailyRate  Decimal @db.Decimal(10, 2)
   beds       Bed[]
   branch     Branch @relation(fields: [branchId], references: [id])
 
@@ -305,6 +307,25 @@ model Admission {
   bed          Bed       @relation(fields: [bedId], references: [id])
   patient      Patient   @relation(fields: [patientId], references: [id])
 }
+
+model Procedure {
+  id        String   @id @default(cuid())
+  patientId String
+  name      String
+  price     Decimal  @db.Decimal(10, 2)
+  patient   Patient  @relation(fields: [patientId], references: [id])
+}
+
+model MedicineUsage {
+  id          String   @id @default(cuid())
+  patientId   String
+  medicineId  String
+  quantity    Int
+  priceAtUse  Decimal  @db.Decimal(10, 2)
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  medicine    Medicine @relation(fields: [medicineId], references: [id])
+}
+
 
 model EmergencyCase {
   id          String   @id @default(cuid())
@@ -362,6 +383,13 @@ enum PaymentMethod {
   UPI
   BANK_TRANSFER
   INSURANCE
+}
+
+enum InvoiceItemCategory {
+  BED
+  ROOM
+  MEDICATION
+  PROCEDURE
 }
 
 enum BedStatus {

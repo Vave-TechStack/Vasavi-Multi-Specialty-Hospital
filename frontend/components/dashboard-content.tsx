@@ -5,6 +5,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import type { LucideIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
+import { io as socketIO } from 'socket.io-client';
 
 const chart=[{d:'Mon',v:38},{d:'Tue',v:52},{d:'Wed',v:48},{d:'Thu',v:71},{d:'Fri',v:62},{d:'Sat',v:84},{d:'Sun',v:76}];
 const appointments=[['09:00','Saanvi Rao','Dr. Ananya Rao','Cardiology','Confirmed'],['09:30','Kiran Kumar','Dr. Arjun Mehta','Neurology','Waiting'],['10:15','Fatima Begum','Dr. Meera Iyer','Orthopedics','In consultation'],['11:00','Rohan Das','Dr. Vikram Shah','Pediatrics','Confirmed']];
@@ -24,7 +25,7 @@ export function Overview(){
   const todayApps = dbStats?.appointments?.toLocaleString() || '128';
 
   const stats = [
-    { icon: CircleDollarSign, label: 'Today’s revenue', value: '₹4,82,650', detail: '12.5%', up: true },
+    { icon: CircleDollarSign, label: 'Today’s revenue', value: dbStats?.todayRevenue?.toLocaleString() || '₹0', detail: '12.5%', up: true },
     { icon: CalendarDays, label: 'Appointments', value: todayApps, detail: '8.2%', up: true },
     { icon: Users, label: 'Active patients', value: activePatients, detail: '3.1%', up: true },
     { icon: Stethoscope, label: 'Doctors on duty', value: totalDocs, detail: '2 off duty', up: false },
@@ -56,7 +57,7 @@ const moduleData: Record<string, { title: string; text: string; action: string; 
  appointments:{title:'Appointments',text:'Schedule, reschedule and track every consultation.',action:'Book appointment',stats:[['Today','128'],['Waiting','18'],['Completed','84'],['Cancelled','7']],rows:appointments},
  requests:{title:'Appointment requests',text:'Review, update and manage incoming patient appointment requests.',action:'Create request',stats:[['Total requests','0'],['New','0'],['Confirmed','0'],['Cancelled','0']],rows:[]},
  doctors:{title:'Doctor management',text:'Profiles, schedules, availability and performance.',action:'Add doctor',stats:[['Total doctors','56'],['On duty','42'],['In consultation','17'],['On leave','4']],rows:[['Dr. Ananya Rao','Cardiology','09:00–17:00','18 patients','Available'],['Dr. Arjun Mehta','Neurology','10:00–18:00','14 patients','In consultation'],['Dr. Meera Iyer','Orthopedics','08:00–16:00','21 patients','Available']]},
- billing:{title:'Billing & payments',text:'Invoices, insurance claims and revenue tracking.',action:'Create invoice',stats:[['Today’s revenue','₹4.82L'],['Pending','₹1.16L'],['Insurance claims','38'],['Paid invoices','106']],rows:[['INV-10482','Saanvi Rao','Consultation','₹1,500','Paid'],['INV-10481','Kiran Kumar','Diagnostics','₹8,400','Pending'],['INV-10480','Fatima Begum','Surgery','₹1,24,000','Insurance']]},
+ billing:{title:'Billing & payments',text:'Invoices, insurance claims and revenue tracking.',action:'Create invoice',stats:[['Today’s revenue','₹0'],['Pending','₹0'],['Insurance claims','0'],['Paid invoices','0']],rows:[]},
  pharmacy:{title:'Pharmacy inventory',text:'Monitor medicine stock, expiry and purchase orders.',action:'Add medicine',stats:[['Medicines','2,418'],['Low stock','23'],['Expiring soon','16'],['Today’s sales','₹82,430']],rows:[['MED-0294','Atorvastatin 10mg','480 units','Nov 2027','In stock'],['MED-0293','Amoxicillin 500mg','32 units','Jan 2027','Low stock'],['MED-0292','Metformin 500mg','760 units','Aug 2028','In stock']]},
  laboratory:{title:'Laboratory',text:'Orders, samples, reports and critical results.',action:'New test order',stats:[['Tests today','186'],['Results ready','124'],['Pending','58'],['Critical','4']],rows:[['LAB-5821','Saanvi Rao','Lipid profile','Dr. Ananya Rao','Ready'],['LAB-5820','Kiran Kumar','MRI Brain','Dr. Arjun Mehta','Processing'],['LAB-5819','Fatima Begum','CBC','Dr. Meera Iyer','Critical']]},
  staff:{title:'Staff & HR',text:'Attendance, leave, payroll and performance.',action:'Add staff',stats:[['Total staff','348'],['Present today','319'],['On leave','21'],['Open positions','8']],rows:[['EMP-284','Nisha Reddy','Head Nurse','ICU','Present'],['EMP-283','Rahul Dev','Lab Technician','Laboratory','Present'],['EMP-282','Sara Ali','Receptionist','Front office','On leave']]},
@@ -140,7 +141,7 @@ const fetcher = (path: string) => fetch(`${apiUrl}${path}`, { headers: { Authori
 
 export function ModulePage({ module }: { module: string }) {
   const isPatients = module === 'patients';
-  const d = { ...moduleData[module] || moduleData.patients };
+  // duplicate declaration removed
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -165,9 +166,69 @@ export function ModulePage({ module }: { module: string }) {
   }, [module]);
   
   // Dynamic fetches
-  const { data: stats } = useSWR(`/${module === 'settings' ? 'settings' : module}/stats`, fetcher, { refreshInterval: 5000 });
+  const { data: stats, mutate: mutateStats } = useSWR(`/${module === 'settings' ? 'settings' : module}/stats`, fetcher, { refreshInterval: 5000 });
   const { data: listData, mutate } = useSWR(`/${module === 'settings' ? 'settings' : module}`, fetcher, { refreshInterval: 5000 });
+
+  // Build module data, overriding hard‑coded billing info with live data
+  const defaultData = moduleData[module] || moduleData.patients;
+  let dynamicRows = defaultData.rows;
+  let dynamicStats = defaultData.stats;
+
+  // For any module, replace static rows with live data when available
+  if (Array.isArray(listData) && module !== 'billing') {
+    dynamicRows = listData.map((item: any) => {
+      const values = Object.values(item);
+      // Take first five fields and convert to strings
+      return values.slice(0, 5).map((v) => (v !== undefined ? String(v) : ''));
+    });
+  }
+
+  if (module === 'billing') {
+    // Transform invoice list into table rows
+    if (Array.isArray(listData)) {
+      dynamicRows = listData.map((inv: any) => [
+        inv.invoiceNumber ?? '',
+        `${inv.patient?.firstName ?? ''} ${inv.patient?.lastName ?? ''}`.trim(),
+        inv.items?.[0]?.description ?? '',
+        `₹${Number(inv.total).toLocaleString()}`,
+        inv.status ?? ''
+      ]);
+    }
+    // Map stats response to expected shape
+    if (stats) {
+      dynamicStats = [
+        ['Today’s revenue', stats.todayRevenue ?? '₹0'],
+        ['Pending', stats.pending ?? '₹0'],
+        ['Insurance claims', stats.insurance?.toString() ?? '0'],
+        ['Paid invoices', stats.paid?.toString() ?? '0']
+      ];
+    }
+  }
+
+  const d = {
+    title: defaultData.title,
+    text: defaultData.text,
+    action: defaultData.action,
+    stats: dynamicStats,
+    rows: dynamicRows
+  };
+
   const { data: beds } = useSWR(isPatients && actionModal?.type === 'admit' ? '/beds/available' : null, fetcher);
+
+  // Real-time socket listener: when billing:updated fires, refresh billing data
+  useEffect(() => {
+    if (module !== 'billing') return;
+    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:4000';
+    const socket = socketIO(apiBase, {
+      auth: { token: typeof window !== 'undefined' ? localStorage.getItem('vasavi-token') || '' : '' },
+    });
+    socket.on('connect', () => socket.emit('join', 'authenticated'));
+    socket.on('billing:updated', () => {
+      mutate();
+      mutateStats();
+    });
+    return () => { socket.disconnect(); };
+  }, [module, mutate, mutateStats]);
 
   // Dropdown list requirements
   const needDepts = ['appointments', 'doctors', 'requests'].includes(module);
@@ -601,8 +662,22 @@ export function ModulePage({ module }: { module: string }) {
             <label className="block text-xs font-semibold text-slate-600">Scheduled Date & Time
               <input name="scheduledAt" type="datetime-local" defaultValue={item?.scheduledAt ? new Date(new Date(item.scheduledAt).getTime() - new Date(item.scheduledAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required />
             </label>
+            <label className="block text-xs font-semibold text-slate-600">Reason / Disease Recovery
+              <input name="reason" defaultValue={item?.reason || ''} placeholder="e.g. Fever, Back pain, Follow-up..." className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-xs font-semibold text-slate-600">Consultation Amount (₹)
+                <input name="amount" type="number" min="0" defaultValue={item?.amount || ''} placeholder="0" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600">Payment Status
+                <select name="paymentStatus" defaultValue={item?.paymentStatus || 'PENDING'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm">
+                  <option value="PENDING">Pending</option>
+                  <option value="PAID">Paid</option>
+                </select>
+              </label>
+            </div>
             <label className="block text-xs font-semibold text-slate-600">Notes
-              <textarea name="notes" defaultValue={item?.notes || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" rows={3}></textarea>
+              <textarea name="notes" defaultValue={item?.notes || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" rows={2}></textarea>
             </label>
           </>
         );
