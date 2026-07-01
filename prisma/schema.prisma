@@ -108,6 +108,8 @@ model Patient {
   invoices          Invoice[]
   labOrders         LabOrder[]
   medicalRecords    MedicalRecord[]
+  procedures        Procedure[]
+  medicineUsages    MedicineUsage[]
 }
 
 model Appointment {
@@ -216,6 +218,7 @@ model Medicine {
   manufacturer String?
   unitPrice    Decimal     @db.Decimal(10, 2)
   inventory    Inventory[]
+  usages       MedicineUsage[]
 }
 
 model Inventory {
