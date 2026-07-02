@@ -363,6 +363,7 @@ app.post('/api/appointments', auth(), asyncRoute(async (req: AuthRequest, res) =
           unitPrice: amount,
           quantity: 1,
           total: amount,
+          category: 'PROCEDURE',
         },
       });
 
@@ -539,6 +540,7 @@ app.post('/api/billing', auth(['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT']), asyncRout
         unitPrice: data.amount,
         quantity: 1,
         total: data.amount,
+        category: 'PROCEDURE',
       }
     });
     return invoice;
@@ -834,6 +836,7 @@ app.post('/api/wards', auth(['SUPER_ADMIN', 'ADMIN']), asyncRoute(async (req: Au
           roomNumber: data.roomNumber,
           type: data.roomType,
           branchId: branch!.id,
+          dailyRate: 0,
         }
       });
     }

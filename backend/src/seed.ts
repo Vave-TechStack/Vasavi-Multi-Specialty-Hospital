@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, AppointmentStatus, InvoiceStatus, Priority, BedStatus, InvoiceItemCategory } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
@@ -219,7 +219,7 @@ export async function seed() {
       doctorName: 'Dr. Ananya Rao',
       deptCode: 'CARD',
       scheduledAt: new Date(Date.now() + 1 * 3600 * 1000), // in 1 hour
-      status: Prisma.AppointmentStatus.CONFIRMED,
+      status: AppointmentStatus.CONFIRMED,
       reason: 'Routine cardiac health checkup',
     },
     {
@@ -227,7 +227,7 @@ export async function seed() {
       doctorName: 'Dr. Arjun Mehta',
       deptCode: 'NEUR',
       scheduledAt: new Date(Date.now() + 2 * 3600 * 1000), // in 2 hours
-      status: Prisma.AppointmentStatus.SCHEDULED,
+      status: AppointmentStatus.SCHEDULED,
       reason: 'Persistent headache checkup',
     },
     {
@@ -235,7 +235,7 @@ export async function seed() {
       doctorName: 'Dr. Meera Iyer',
       deptCode: 'ORTH',
       scheduledAt: new Date(Date.now() - 15 * 60 * 1000), // 15 mins ago
-      status: Prisma.AppointmentStatus.IN_CONSULTATION,
+      status: AppointmentStatus.IN_CONSULTATION,
       reason: 'Post-op knee therapy follow-up',
     },
     {
@@ -243,7 +243,7 @@ export async function seed() {
       doctorName: 'Dr. Vikram Shah',
       deptCode: 'PEDI',
       scheduledAt: new Date(Date.now() + 4 * 3600 * 1000), // in 4 hours
-      status: Prisma.AppointmentStatus.CONFIRMED,
+      status: AppointmentStatus.CONFIRMED,
       reason: 'Annual pediatric health check',
     },
   ];
@@ -274,19 +274,19 @@ export async function seed() {
     {
       invoiceNumber: 'INV-10482',
       patientCode: 'VH-20482', // Saanvi Rao
-      status: Prisma.InvoiceStatus.PAID,
+      status: InvoiceStatus.PAID,
       items: [{ description: 'Cardiology Consultation Fee', unitPrice: 1500, quantity: 1 }],
     },
     {
       invoiceNumber: 'INV-10481',
       patientCode: 'VH-20483', // Kiran Kumar
-      status: Prisma.InvoiceStatus.ISSUED,
+      status: InvoiceStatus.ISSUED,
       items: [{ description: 'Neurology Diagnostics & Scan', unitPrice: 8400, quantity: 1 }],
     },
     {
       invoiceNumber: 'INV-10480',
       patientCode: 'VH-20484', // Fatima Begum
-      status: Prisma.InvoiceStatus.ISSUED,
+      status: InvoiceStatus.ISSUED,
       items: [{ description: 'Orthopedic Major Surgery', unitPrice: 124000, quantity: 1 }],
     },
   ];
@@ -317,7 +317,7 @@ export async function seed() {
             unitPrice: item.unitPrice,
             quantity: item.quantity,
             total: item.unitPrice * item.quantity,
-            category: Prisma.InvoiceItemCategory.BED,
+            category: InvoiceItemCategory.BED,
           },
         });
       }
@@ -377,9 +377,9 @@ export async function seed() {
   }
 
   const labOrdersData = [
-    { patientCode: 'VH-20482', testCode: 'LAB-LP', status: 'READY', priority: Prisma.Priority.NORMAL },
-    { patientCode: 'VH-20483', testCode: 'LAB-MRI', status: 'PROCESSING', priority: Prisma.Priority.NORMAL },
-    { patientCode: 'VH-20484', testCode: 'LAB-CBC', status: 'CRITICAL', priority: Prisma.Priority.HIGH },
+    { patientCode: 'VH-20482', testCode: 'LAB-LP', status: 'READY', priority: Priority.NORMAL },
+    { patientCode: 'VH-20483', testCode: 'LAB-MRI', status: 'PROCESSING', priority: Priority.NORMAL },
+    { patientCode: 'VH-20484', testCode: 'LAB-CBC', status: 'CRITICAL', priority: Priority.HIGH },
   ];
 
   for (const order of labOrdersData) {
@@ -453,7 +453,7 @@ export async function seed() {
     });
 
     for (const bNum of r.beds) {
-      const bedStatus = bNum === 'GEN-112-A' ? Prisma.BedStatus.AVAILABLE : Prisma.BedStatus.OCCUPIED;
+      const bedStatus = bNum === 'GEN-112-A' ? BedStatus.AVAILABLE : BedStatus.OCCUPIED;
       const bed = await prisma.bed.upsert({
         where: { roomId_bedNumber: { roomId: room.id, bedNumber: bNum } },
         update: { status: bedStatus },
@@ -465,7 +465,7 @@ export async function seed() {
       });
 
       // Add admission mapping if occupied
-      if (bedStatus === Prisma.BedStatus.OCCUPIED) {
+      if (bedStatus === BedStatus.OCCUPIED) {
         const patientCode = bNum === 'ICU-08-A' ? 'VH-20482' : 'VH-20480'; // Saanvi Rao or Mary Joseph
         const existingAdm = await prisma.admission.findFirst({
           where: { bedId: bed.id, patientId: patientMap[patientCode] },
@@ -484,8 +484,8 @@ export async function seed() {
 
   // 14. Seed Emergency cases
   const emergenciesData = [
-    { caseNumber: 'ER-9042', patientName: 'Ravi Kumar', phone: '+91 98765 00001', priority: Prisma.Priority.CRITICAL, status: 'ACTIVE', details: 'Chest pain, Dr. Ananya Rao' },
-    { caseNumber: 'ER-9041', patientName: 'Divya Singh', phone: '+91 98765 00002', priority: Prisma.Priority.HIGH, status: 'STABILIZED', details: 'Trauma, Dr. Meera Iyer' },
+    { caseNumber: 'ER-9042', patientName: 'Ravi Kumar', phone: '+91 98765 00001', priority: Priority.CRITICAL, status: 'ACTIVE', details: 'Chest pain, Dr. Ananya Rao' },
+    { caseNumber: 'ER-9041', patientName: 'Divya Singh', phone: '+91 98765 00002', priority: Priority.HIGH, status: 'STABILIZED', details: 'Trauma, Dr. Meera Iyer' },
   ];
 
   for (const er of emergenciesData) {
