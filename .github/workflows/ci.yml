@@ -8,18 +8,22 @@ jobs:
     strategy:
       matrix:
         service: [frontend, backend]
-    defaults:
-      run:
-        working-directory: ${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: ${{ matrix.service }}/package-lock.json
-      - run: npm ci
-      - if: matrix.service == 'backend'
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies (workspace root)
+        run: npm ci
+      - name: Generate Prisma client
+        if: matrix.service == 'backend'
+        working-directory: backend
         run: npm run prisma:generate
-      - run: npm run lint
-      - run: npm run build
+      - name: Lint
+        working-directory: ${{ matrix.service }}
+        run: npm run lint
+      - name: Build
+        working-directory: ${{ matrix.service }}
+        run: npm run build
