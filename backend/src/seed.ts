@@ -243,7 +243,7 @@ export async function seed() {
       doctorName: 'Dr. Vikram Shah',
       deptCode: 'PEDI',
       scheduledAt: new Date(Date.now() + 4 * 3600 * 1000), // in 4 hours
-      status: AppointmentStatus.CONFIRMED,
+      status: Prisma.AppointmentStatus.CONFIRMED,
       reason: 'Annual pediatric health check',
     },
   ];
@@ -274,19 +274,19 @@ export async function seed() {
     {
       invoiceNumber: 'INV-10482',
       patientCode: 'VH-20482', // Saanvi Rao
-      status: InvoiceStatus.PAID,
+      status: Prisma.InvoiceStatus.PAID,
       items: [{ description: 'Cardiology Consultation Fee', unitPrice: 1500, quantity: 1 }],
     },
     {
       invoiceNumber: 'INV-10481',
       patientCode: 'VH-20483', // Kiran Kumar
-      status: InvoiceStatus.ISSUED,
+      status: Prisma.InvoiceStatus.ISSUED,
       items: [{ description: 'Neurology Diagnostics & Scan', unitPrice: 8400, quantity: 1 }],
     },
     {
       invoiceNumber: 'INV-10480',
       patientCode: 'VH-20484', // Fatima Begum
-      status: InvoiceStatus.ISSUED,
+      status: Prisma.InvoiceStatus.ISSUED,
       items: [{ description: 'Orthopedic Major Surgery', unitPrice: 124000, quantity: 1 }],
     },
   ];
@@ -317,7 +317,7 @@ export async function seed() {
             unitPrice: item.unitPrice,
             quantity: item.quantity,
             total: item.unitPrice * item.quantity,
-            category: InvoiceItemCategory.BED,
+            category: Prisma.InvoiceItemCategory.BED,
           },
         });
       }
@@ -465,7 +465,7 @@ export async function seed() {
       });
 
       // Add admission mapping if occupied
-      if (bedStatus === BedStatus.OCCUPIED) {
+      if (bedStatus === Prisma.BedStatus.OCCUPIED) {
         const patientCode = bNum === 'ICU-08-A' ? 'VH-20482' : 'VH-20480'; // Saanvi Rao or Mary Joseph
         const existingAdm = await prisma.admission.findFirst({
           where: { bedId: bed.id, patientId: patientMap[patientCode] },
