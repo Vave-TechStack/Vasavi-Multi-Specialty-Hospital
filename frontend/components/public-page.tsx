@@ -1,9 +1,12 @@
+'use client';
+
 import Image from 'next/image';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { ArrowRight, Award, BadgeCheck, CheckCircle2, Mail, MapPin, Phone, Star } from 'lucide-react';
 import { ContactForm } from './contact-form';
 import { SectionHeading } from './section-heading';
-import { departments, doctors } from '@/lib/data';
+import { DepartmentShowcase, DoctorShowcase } from '@/components/hospital-data';
 
 export function PageHero({ eyebrow, title, text, image }: { eyebrow: string; title: string; text: string; image: string }) {
   return <section className="bg-[#effaf8] py-16 lg:py-20"><div className="container-pad grid items-center gap-10 lg:grid-cols-2"><div><p className="eyebrow">{eyebrow}</p><h1 className="display mt-4">{title}</h1><p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">{text}</p></div><Image src={image} width={900} height={550} alt="" className="h-72 w-full rounded-[2rem] object-cover lg:h-80"/></div></section>;
@@ -15,15 +18,48 @@ export function AboutContent() {
 }
 
 export function ServicesContent() {
-  return <><PageHero eyebrow="Medical services" title="Specialist teams, connected around you." text="Explore comprehensive medical, surgical, diagnostic and emergency care delivered through our centres of excellence." image="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&q=85"/><section className="container-pad py-20"><div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{departments.map(({name,text,icon:Icon})=><article className="card p-7" key={name}><Icon className="text-primary" size={28}/><h2 className="mt-5 font-poppins text-xl font-semibold">{name}</h2><p className="mt-3 text-sm leading-6 text-slate-500">{text}</p><ul className="mt-5 grid gap-2 text-xs font-medium text-slate-600"><li>Specialist consultation</li><li>Diagnostics & treatment</li><li>Follow-up care</li></ul><Link href="/appointment" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary">Book consultation <ArrowRight size={15}/></Link></article>)}</div></section></>;
+  return <><PageHero eyebrow="Medical services" title="Specialist teams, connected around you." text="Explore comprehensive medical, surgical, diagnostic and emergency care delivered through our centres of excellence." image="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&q=85"/><section className="container-pad py-20"><DepartmentShowcase compact /></section></>;
 }
 
 export function DoctorsContent() {
-  return <><PageHero eyebrow="Our doctors" title="Specialists who listen first." text="Find the right consultant, view their expertise and request a convenient appointment." image="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1200&q=85"/><section className="container-pad py-20"><div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-4">{[...doctors,...doctors].map((d,i)=><article className="card overflow-hidden" key={`${d.name}-${i}`}><Image src={d.image} width={600} height={600} alt={d.name} className="h-64 w-full object-cover object-top"/><div className="p-6"><BadgeCheck className="text-primary" size={20}/><h2 className="mt-3 font-poppins text-lg font-semibold">{d.name}</h2><p className="mt-1 text-sm text-primary">{d.role}</p><p className="mt-2 text-xs text-slate-400">{d.exp} | MBBS, MD</p><Link href="/appointment" className="btn-secondary mt-5 w-full !px-4 !py-2.5">Book appointment</Link></div></article>)}</div></section></>;
+  return <><PageHero eyebrow="Our doctors" title="Specialists who listen first." text="Find the right consultant, view their expertise and request a convenient appointment." image="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1200&q=85"/><section className="container-pad py-20"><DoctorShowcase limit={8} /></section></>;
 }
 
 export function TestimonialsContent() {
-  return <><PageHero eyebrow="Patient stories" title="Care people remember." text="Real experiences from patients and families who trusted Vasavi with their care." image="https://images.unsplash.com/photo-1551601651-2a8555f1a136?auto=format&fit=crop&w=1200&q=85"/><section className="container-pad py-20"><div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{Array.from({length:6}).map((_,i)=><article className="card p-7" key={i}><div className="flex text-amber-400">{[1,2,3,4,5].map(x=><Star key={x} size={15} fill="currentColor"/>)}</div><p className="mt-5 leading-7 text-slate-600">&quot;The team was professional, reassuring and remarkably quick. Every question was answered clearly, and the follow-up care was excellent.&quot;</p><p className="mt-6 font-poppins font-semibold">{['Sowmya R.','Harish V.','Lakshmi P.'][i%3]}</p><p className="text-xs text-slate-400">{['Cardiology','Emergency care','Orthopedics'][i%3]}</p></article>)}</div></section></>;
+  const [list, setList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    fetch(apiUrl + '/public/testimonials')
+      .then(r => r.json())
+      .then(data => { setList(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => {
+        setList([]);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <div className="container-pad py-20 text-center text-slate-500">Loading patient stories...</div>;
+
+  return (
+    <>
+      <PageHero eyebrow="Patient stories" title="Care people remember." text="Real experiences from patients and families who trusted Vasavi with their care." image="https://images.unsplash.com/photo-1551601651-2a8555f1a136?auto=format&fit=crop&w=1200&q=85" />
+      <section className="container-pad py-20">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {list.map((t, i) => (
+            <article className="card p-7" key={i}>
+              <div className="flex text-amber-400">{[1,2,3,4,5].map(x => <Star key={x} size={15} fill="currentColor" />)}</div>
+              <p className="mt-5 leading-7 text-slate-600">&ldquo;{t.text}&rdquo;</p>
+              <p className="mt-6 font-poppins font-semibold">{t.name}</p>
+              <p className="text-xs text-slate-400">{t.department || t.dept || ""}</p>
+              <p className="mt-1 text-xs text-slate-400 italic">Written by: {t.name}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
 }
 
 export function ContactContent() {

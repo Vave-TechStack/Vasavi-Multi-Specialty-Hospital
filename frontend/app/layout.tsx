@@ -3,6 +3,9 @@ import { Inter, Poppins } from 'next/font/google';
 import './globals.css';
 import { SiteFooter, SiteHeader } from '@/components/site-shell';
 import { WhatsAppWidget } from '@/components/whatsapp-widget';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { ToastProvider } from '@/components/toast-provider';
+import { ThemeProvider } from '@/components/theme-provider';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const poppins = Poppins({ subsets: ['latin'], weight: ['500', '600', '700'], variable: '--font-poppins' });
@@ -30,10 +33,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${inter.variable} ${poppins.variable}`}>
       <body className="font-sans antialiased">
-        <SiteHeader />
-        <main>{children}</main>
-        <WhatsAppWidget />
-        <SiteFooter />
+        <ThemeProvider>
+          <ToastProvider>
+            <ErrorBoundary>
+              <SiteHeader />
+              <main>{children}</main>
+              <WhatsAppWidget />
+              <SiteFooter />
+            </ErrorBoundary>
+          </ToastProvider>
+        </ThemeProvider>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
       </body>
     </html>

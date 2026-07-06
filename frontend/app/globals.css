@@ -2,24 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+:root {
+  color-scheme: light;
+  --bg-page: #f5f8f8;
+  --bg-white: #ffffff;
+  --bg-card: #ffffff;
+  --bg-sidebar: #0f172a;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --border-light: #f1f5f9;
+  --hover-bg: #f8fafc;
+  --skeleton-bg: #e2e8f0;
+  --input-bg: #ffffff;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg-page: #0f172a;
+  --bg-white: #1e293b;
+  --bg-card: #1e293b;
+  --bg-sidebar: #0f172a;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --border-light: #1e293b;
+  --hover-bg: #334155;
+  --skeleton-bg: #334155;
+  --input-bg: #1e293b;
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; color: #0f172a; background: #fff; }
+body {
+  margin: 0;
+  color: var(--text-primary);
+  background: var(--bg-page);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
 
 @layer components {
   .container-pad { @apply mx-auto w-full max-w-[1440px] px-5 sm:px-8 lg:px-12; }
   .eyebrow { @apply text-xs font-bold uppercase tracking-[0.2em] text-primary; }
   .display { @apply font-poppins text-4xl font-semibold leading-[1.08] tracking-[-0.04em] sm:text-5xl lg:text-6xl; }
   .section-title { @apply font-poppins text-3xl font-semibold tracking-[-0.035em] text-dark sm:text-4xl; }
-  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-[#0b625b]; }
-  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-dark transition hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary; }
-  .glass { @apply border border-white/70 bg-white/80 shadow-soft backdrop-blur-xl; }
-  .card { @apply rounded-[1.75rem] border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-soft; }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-[#0b625b];
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-dark transition hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary;
+  }
+  .dark .btn-secondary {
+    @apply border-slate-600 bg-slate-800 text-slate-200 hover:border-primary/50 hover:text-primary;
+  }
+  .glass {
+    @apply border border-white/70 bg-white/80 shadow-soft backdrop-blur-xl;
+  }
+  .dark .glass {
+    @apply border-slate-700/70 bg-slate-800/80;
+  }
+  .card {
+    @apply rounded-[1.75rem] border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-soft;
+  }
+  .dark .card {
+    @apply border-slate-700 bg-slate-800;
+  }
 }
+
+.dark .text-dark { color: #f1f5f9; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-slate-400 { color: #64748b; }
+.dark .text-slate-600 { color: #cbd5e1; }
+.dark .text-slate-700 { color: #e2e8f0; }
+.dark .border-slate-100 { border-color: #334155; }
+.dark .border-slate-200 { border-color: #475569; }
+.dark .bg-white { background-color: #1e293b; }
+.dark .bg-slate-50 { background-color: #0f172a; }
+.dark .bg-slate-100 { background-color: #1e293b; }
+.dark .bg-slate-200 { background-color: #334155; }
+.dark .shadow-sm { box-shadow: 0 1px 3px 0 rgba(0,0,0,0.3); }
+.dark .shadow-soft { box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
 
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { scrollbar-width: none; }
 .bg-primary .section-title { color: white; }
 .bg-primary .eyebrow { color: #99f6e4; }
 .bg-primary .section-title + p { color: #ccfbf1; }
+
+/* Dark mode transitions */
+.dark .rounded-2xl,
+.dark .rounded-xl,
+.dark .rounded-lg {
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}

@@ -4,44 +4,81 @@ import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronRight, CircleDollarS
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { LucideIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import useSWR from 'swr';
-import { io as socketIO } from 'socket.io-client';
+import useSWR, { mutate as globalMutate } from 'swr';
+import { Spinner } from '@/components/spinner';
+import { ModulePageSkeleton, StatCardSkeleton, TableSkeleton, PageTitleSkeleton } from '@/components/skeleton';
+import { WardOccupancyCards } from '@/components/ward-occupancy';
+import { useToast } from '@/components/toast-provider';
 
-const chart=[{d:'Mon',v:38},{d:'Tue',v:52},{d:'Wed',v:48},{d:'Thu',v:71},{d:'Fri',v:62},{d:'Sat',v:84},{d:'Sun',v:76}];
-const appointments=[['09:00','Saanvi Rao','Dr. Ananya Rao','Cardiology','Confirmed'],['09:30','Kiran Kumar','Dr. Arjun Mehta','Neurology','Waiting'],['10:15','Fatima Begum','Dr. Meera Iyer','Orthopedics','In consultation'],['11:00','Rohan Das','Dr. Vikram Shah','Pediatrics','Confirmed']];
-const overviewStats: { icon: LucideIcon; label: string; value: string; detail: string; up: boolean }[] = [
-  { icon: CircleDollarSign, label: 'Today’s revenue', value: '₹4,82,650', detail: '12.5%', up: true },
-  { icon: CalendarDays, label: 'Appointments', value: '128', detail: '8.2%', up: true },
-  { icon: Users, label: 'Active patients', value: '1,847', detail: '3.1%', up: true },
-  { icon: Stethoscope, label: 'Doctors on duty', value: '42', detail: '2 off duty', up: false },
-];
+import { io as socketIO } from 'socket.io-client';
+import { useRouter } from 'next/navigation';
+
+function getGreeting(): string {
+  if (typeof window === 'undefined') return 'Good morning';
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function getUserName(): string {
+  if (typeof window === 'undefined') return 'Admin';
+  try {
+    const raw = localStorage.getItem('vasavi-user');
+    if (!raw) return 'Admin';
+    const user = JSON.parse(raw) as { name?: string };
+    return user.name || 'Admin';
+  } catch {
+    return 'Admin';
+  }
+}
+
+const emptyChart: { d: string; v: number }[] = [];
 
 export function Overview(){
-  const { data: dbStats } = useSWR('/dashboard', fetcher, { refreshInterval: 5000 });
-  const { data: appointmentsList } = useSWR('/appointments', fetcher, { refreshInterval: 5000 });
-  const { data: chartData } = useSWR('/dashboard/chart', fetcher, { refreshInterval: 5000 });
+  const router = useRouter();
+  const { data: dbStats, error: dbError } = useSWR('/dashboard', fetcher, { refreshInterval: 5000 });
+  const { data: appointmentsList, error: appointmentsError } = useSWR('/appointments', fetcher, { refreshInterval: 5000 });
+  const { data: chartData, error: chartError } = useSWR('/dashboard/chart', fetcher, { refreshInterval: 5000 });
 
-  const activePatients = dbStats?.patients?.toLocaleString() || '1,847';
-  const totalDocs = dbStats?.doctors?.toLocaleString() || '42';
-  const todayApps = dbStats?.appointments?.toLocaleString() || '128';
+  const [greeting] = useState(getGreeting);
+  const [userName] = useState(getUserName);
+
+  if (dbError || appointmentsError || chartError) {
+    return <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-12 text-center shadow-sm">
+      <div className="grid size-14 place-items-center rounded-full bg-red-100 mb-4">
+        <ArrowDownRight size={24} className="text-red-500" />
+      </div>
+      <h3 className="font-poppins text-lg font-semibold mb-1">Failed to load dashboard data</h3>
+      <p className="text-sm text-slate-500 mb-4">There was a problem connecting to the server. Refreshing in a few seconds...</p>
+      <button onClick={() => window.location.reload()} className="btn-primary !px-6">Refresh page</button>
+    </div>;
+  }
+  if (!dbStats || !appointmentsList || !chartData) {
+    return <ModulePageSkeleton />;
+  }
+
+  const activePatients = dbStats?.patients?.toLocaleString() || '0';
+  const totalDocs = dbStats?.doctors?.toLocaleString() || '0';
+  const todayApps = dbStats?.appointments?.toLocaleString() || '0';
 
   const stats = [
-    { icon: CircleDollarSign, label: 'Today’s revenue', value: dbStats?.todayRevenue?.toLocaleString() || '₹0', detail: '12.5%', up: true },
-    { icon: CalendarDays, label: 'Appointments', value: todayApps, detail: '8.2%', up: true },
-    { icon: Users, label: 'Active patients', value: activePatients, detail: '3.1%', up: true },
-    { icon: Stethoscope, label: 'Doctors on duty', value: totalDocs, detail: '2 off duty', up: false },
+    { icon: CircleDollarSign, label: 'Today\'s revenue', value: `₹${Number(dbStats?.todayRevenue ?? 0).toLocaleString()}`, detail: 'Live', up: true, pct: 85 },
+    { icon: CalendarDays, label: 'Appointments', value: todayApps, detail: 'Live', up: true, pct: Math.min(100, Math.round((Number(dbStats?.appointments ?? 0) / 50) * 100)) },
+    { icon: Users, label: 'Active patients', value: activePatients, detail: 'Live', up: true, pct: Math.min(100, Math.round((Number(dbStats?.patients ?? 0) / 200) * 100)) },
+    { icon: Stethoscope, label: 'Doctors on duty', value: totalDocs, detail: 'Live', up: true, pct: Math.min(100, Math.round((Number(dbStats?.doctors ?? 0) / 30) * 100)) },
   ];
 
-  let displayAppointments = appointments;
+  let displayAppointments: string[][] = [];
   if (appointmentsList && Array.isArray(appointmentsList)) {
     displayAppointments = appointmentsList.map((a: any) => {
       const timeStr = a.scheduledAt ? new Date(a.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '09:00';
       return [
         timeStr,
         a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : 'Patient',
-        a.doctor?.user?.name || 'Doctor',
-        a.department?.name || 'General',
-        a.status || 'Confirmed'
+        a.doctor?.user?.name || 'Unassigned doctor',
+        a.department?.name || 'No department',
+        a.status || 'SCHEDULED'
       ];
     });
   }
@@ -50,29 +87,102 @@ export function Overview(){
     ['Emergency queue', (dbStats?.liveOps?.emergencyQueue ?? 0).toString(), 'Active cases'],
     ['Beds available', (dbStats?.liveOps?.bedsAvailable ?? 0).toString(), 'Ready to allocate'],
     ['Lab results pending', (dbStats?.liveOps?.labPending ?? 0).toString(), 'Processing'],
-    ['Ambulances active', '3', 'ETA 8 min']
   ];
 
-  return <><PageTitle title="Good morning, Admin" text="Here’s what is happening across Vasavi today."/><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({icon:Icon,label,value,detail,up})=><div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm" key={label}><div className="flex justify-between"><span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon size={19}/></span><span className={`flex items-center gap-1 text-xs font-semibold ${up?'text-emerald-600':'text-slate-400'}`}>{up?<ArrowUpRight size={14}/>:<ArrowDownRight size={14}/>} {detail}</span></div><p className="mt-5 text-xs font-medium text-slate-400">{label}</p><p className="mt-1 font-poppins text-2xl font-semibold">{value}</p></div>)}</div>
-  <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_.6fr]"><div className="rounded-2xl bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-poppins font-semibold">Patient flow</h2><p className="mt-1 text-xs text-slate-400">Visits over the last 7 days</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">+14.2% this week</span></div><div className="mt-5 h-64"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData && chartData.length > 0 ? chartData : chart}><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#14b8a6" stopOpacity={.35}/><stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/><XAxis dataKey="d" axisLine={false} tickLine={false} fontSize={11}/><YAxis axisLine={false} tickLine={false} fontSize={11}/><Tooltip/><Area type="monotone" dataKey="v" stroke="#0f766e" strokeWidth={3} fill="url(#fill)"/></AreaChart></ResponsiveContainer></div></div><div className="rounded-2xl bg-dark p-6 text-white shadow-sm"><h2 className="font-poppins font-semibold">Live operations</h2><p className="mt-1 text-xs text-slate-400">Updated just now</p><div className="mt-6 grid gap-4">{liveOpsData.map(([a,b,c],i)=><div className="flex items-center gap-3" key={a}><span className={`size-2 rounded-full ${i===0?'bg-red-400':'bg-secondary'}`}/><div className="flex-1"><p className="text-sm">{a}</p><p className="text-[10px] text-slate-500">{c}</p></div><p className="font-poppins text-xl font-semibold">{b}</p></div>)}</div></div></div>
-  <div className="mt-6"><TableCard title="Today’s appointments" rows={displayAppointments}/></div></>
+  return <>
+    <PageTitle title={`${greeting}, ${userName}`} text="Here\'s what is happening across Vasavi today." onAction={() => router.push('/dashboard/appointments?new=true')}/>
+      {/* Ward Occupancy Section */}
+      <div className="mb-8">
+        <WardOccupancyCards />
+      </div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {stats.map(({icon:Icon,label,value,detail,up,pct})=>
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm" key={label}>
+          <div className="flex justify-between">
+            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon size={19}/></span>
+            <span className={`flex items-center gap-1 text-xs font-semibold ${up?'text-emerald-600':'text-slate-400'}`}>{up?<ArrowUpRight size={14}/>:<ArrowDownRight size={14}/>} {detail}</span>
+          </div>
+          <p className="mt-5 text-xs font-medium text-slate-400">{label}</p>
+          <p className="mt-1 font-poppins text-2xl font-semibold">{value}</p>
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
+    <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_.6fr]">
+      <div className="rounded-2xl bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-poppins font-semibold">Patient flow</h2>
+            <p className="mt-1 text-xs text-slate-400">Visits over the last 7 days</p>
+          </div>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">Live analytics</span>
+        </div>
+        <div className="mt-5 h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData && chartData.length > 0 ? chartData : emptyChart}>
+              <defs>
+                <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#14b8a6" stopOpacity={.35}/>
+                  <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/>
+              <XAxis dataKey="d" axisLine={false} tickLine={false} fontSize={11}/>
+              <YAxis axisLine={false} tickLine={false} fontSize={11}/>
+              <Tooltip/>
+              <Area type="monotone" dataKey="v" stroke="#0f766e" strokeWidth={3} fill="url(#fill)"/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <div className="rounded-2xl bg-dark p-6 text-white shadow-sm">
+        <h2 className="font-poppins font-semibold">Live operations</h2>
+        <p className="mt-1 text-xs text-slate-400">Updated from hospital data</p>
+        <div className="mt-6 grid gap-4">
+          {liveOpsData.map(([a,b,c],i)=>
+            <div className="flex items-center gap-3" key={a}>
+              <span className={`size-2 rounded-full ${i===0?'bg-red-400':'bg-secondary'}`}/>
+              <div className="flex-1">
+                <p className="text-sm">{a}</p>
+                <p className="text-[10px] text-slate-500">{c}</p>
+              </div>
+              <p className="font-poppins text-xl font-semibold">{b}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+    <div className="mt-6">
+      {displayAppointments.length > 0 ? (
+        <TableCard title="Today\'s appointments" rows={displayAppointments}/>
+      ) : (
+        <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-10 text-center shadow-sm">
+          <CalendarDays size={32} className="text-slate-300 mb-3" />
+          <h3 className="font-poppins text-base font-semibold mb-1">No appointments today</h3>
+          <p className="text-sm text-slate-500">When patients book appointments, they\'ll appear here.</p>
+        </div>
+      )}
+    </div>
+  </>
 }
 
 
 
 const moduleData: Record<string, { title: string; text: string; action: string; stats: string[][]; rows: string[][] }> = {
- patients:{title:'Patient management',text:'Manage records, documents, history and insurance.',action:'Add patient',stats:[['Total patients','25,842'],['New this month','684'],['Inpatients','128'],['Discharged today','19']],rows:[['VH-20481','Aarav Sharma','34 years','Cardiology','Active'],['VH-20480','Mary Joseph','52 years','Neurology','Admitted'],['VH-20479','Ishaan Patel','8 years','Pediatrics','Follow-up'],['VH-20478','Noor Khan','41 years','Orthopedics','Active']]},
- appointments:{title:'Appointments',text:'Schedule, reschedule and track every consultation.',action:'Book appointment',stats:[['Today','128'],['Waiting','18'],['Completed','84'],['Cancelled','7']],rows:appointments},
- requests:{title:'Appointment requests',text:'Review, update and manage incoming patient appointment requests.',action:'Create request',stats:[['Total requests','0'],['New','0'],['Confirmed','0'],['Cancelled','0']],rows:[]},
- doctors:{title:'Doctor management',text:'Profiles, schedules, availability and performance.',action:'Add doctor',stats:[['Total doctors','56'],['On duty','42'],['In consultation','17'],['On leave','4']],rows:[['Dr. Ananya Rao','Cardiology','09:00–17:00','18 patients','Available'],['Dr. Arjun Mehta','Neurology','10:00–18:00','14 patients','In consultation'],['Dr. Meera Iyer','Orthopedics','08:00–16:00','21 patients','Available']]},
+ patients:{title:'Patient management',text:'Manage records, documents, history and insurance.',action:'Add patient',stats:[['Total patients','0'],['New this month','0'],['Inpatients','0'],['Discharged today','0']],rows:[]},
+ appointments:{title:'Appointments',text:'Schedule, reschedule and track every consultation.',action:'Book appointment',stats:[['Today','0'],['Waiting','0'],['Completed','0'],['Cancelled','0']],rows:[]},
+ requests:{title:'Appointment requests',text:'Review, update and manage incoming patient appointment requests.',action:'Create request',stats:[['Total requests','0'],['New','0'],['Confirmed','0'],['Rejected','0']],rows:[]},
+ doctors:{title:'Doctor management',text:'Profiles, schedules, availability and performance.',action:'Add doctor',stats:[['Total doctors','0'],['On duty','0'],['In consultation','0'],['On leave','0']],rows:[]},
  billing:{title:'Billing & payments',text:'Invoices, insurance claims and revenue tracking.',action:'Create invoice',stats:[['Today’s revenue','₹0'],['Pending','₹0'],['Insurance claims','0'],['Paid invoices','0']],rows:[]},
- pharmacy:{title:'Pharmacy inventory',text:'Monitor medicine stock, expiry and purchase orders.',action:'Add medicine',stats:[['Medicines','2,418'],['Low stock','23'],['Expiring soon','16'],['Today’s sales','₹82,430']],rows:[['MED-0294','Atorvastatin 10mg','480 units','Nov 2027','In stock'],['MED-0293','Amoxicillin 500mg','32 units','Jan 2027','Low stock'],['MED-0292','Metformin 500mg','760 units','Aug 2028','In stock']]},
- laboratory:{title:'Laboratory',text:'Orders, samples, reports and critical results.',action:'New test order',stats:[['Tests today','186'],['Results ready','124'],['Pending','58'],['Critical','4']],rows:[['LAB-5821','Saanvi Rao','Lipid profile','Dr. Ananya Rao','Ready'],['LAB-5820','Kiran Kumar','MRI Brain','Dr. Arjun Mehta','Processing'],['LAB-5819','Fatima Begum','CBC','Dr. Meera Iyer','Critical']]},
- staff:{title:'Staff & HR',text:'Attendance, leave, payroll and performance.',action:'Add staff',stats:[['Total staff','348'],['Present today','319'],['On leave','21'],['Open positions','8']],rows:[['EMP-284','Nisha Reddy','Head Nurse','ICU','Present'],['EMP-283','Rahul Dev','Lab Technician','Laboratory','Present'],['EMP-282','Sara Ali','Receptionist','Front office','On leave']]},
- wards:{title:'Ward & bed management',text:'Real-time bed allocation and discharge planning.',action:'Allocate bed',stats:[['Total beds','160'],['Occupied','126'],['Available','34'],['Discharges today','19']],rows:[['ICU-08','ICU','Saanvi Rao','Dr. Ananya Rao','Occupied'],['GEN-112','General ward','—','—','Available'],['PVT-24','Private room','Mary Joseph','Dr. Arjun Mehta','Occupied']]},
- emergency:{title:'Emergency command',text:'Critical cases, ambulance tracking and rapid response.',action:'Register case',stats:[['Active cases','18'],['Critical','4'],['Ambulances active','3'],['Avg. response','8 min']],rows:[['ER-9042','Ravi Kumar','Chest pain','Dr. Ananya Rao','Critical'],['ER-9041','Divya Singh','Trauma','Dr. Meera Iyer','Stabilized'],['AMB-03','Inbound ambulance','ETA 8 min','Team A','Active']]},
- reports:{title:'Reports & analytics',text:'Operational, clinical and financial insights.',action:'Export report',stats:[['Revenue growth','12.5%'],['Patient growth','8.2%'],['Bed occupancy','78.8%'],['Collection rate','94.2%']],rows:[['Monthly revenue report','Finance','June 2026','PDF / Excel','Ready'],['Patient outcomes','Clinical','Q2 2026','PDF','Ready'],['Doctor performance','Operations','June 2026','Excel','Processing']]},
- settings:{title:'Hospital settings',text:'Branches, roles, permissions, users and audit logs.',action:'Add user',stats:[['Active users','186'],['Roles','8'],['Branches','1'],['Audit events today','248']],rows:[['Admin role','Full platform access','12 users','Updated today','Active'],['Doctor role','Clinical access','56 users','Updated 2 days ago','Active'],['Reception role','Front desk access','18 users','Updated last week','Active']]},
+ pharmacy:{title:'Pharmacy inventory',text:'Monitor medicine stock, expiry and purchase orders.',action:'Add medicine',stats:[['Medicines','0'],['Low stock','0'],['Expiring soon','0'],['Today’s sales','₹0']],rows:[]},
+ laboratory:{title:'Laboratory',text:'Orders, samples, reports and critical results.',action:'New test order',stats:[['Tests today','0'],['Results ready','0'],['Pending','0'],['Critical','0']],rows:[]},
+ staff:{title:'Staff & HR',text:'Attendance, leave, payroll and performance.',action:'Add staff',stats:[['Total staff','0'],['Present today','0'],['On leave','0'],['Open positions','0']],rows:[]},
+ wards:{title:'Ward & bed management',text:'Real-time bed allocation and discharge planning.',action:'Allocate bed',stats:[['Total beds','0'],['Occupied','0'],['Available','0'],['Discharges today','0']],rows:[]},
+ emergency:{title:'Emergency command',text:'Critical cases, ambulance tracking and rapid response.',action:'Register case',stats:[['Active cases','0'],['Critical','0'],['Ambulances active','0'],['Avg. response','N/A']],rows:[]},
+ reports:{title:'Reports & analytics',text:'Operational, clinical and financial insights.',action:'Export report',stats:[['Revenue growth','0%'],['Patient growth','0%'],['Bed occupancy','0%'],['Collection rate','0%']],rows:[]},
+ settings:{title:'Hospital settings',text:'Branches, roles, permissions, users and audit logs.',action:'Add user',stats:[['Active users','0'],['Roles','0'],['Branches','0'],['Audit events today','0']],rows:[]},
 };
 
 export function PageTitle({title, text, action='Add new', onAction}:{title:string; text:string; action?:string; onAction?:()=>void}){
@@ -95,13 +205,15 @@ export function TableCard({
   rows, 
   onStatusClick,
   onEditClick,
-  onDeleteClick
+  onDeleteClick,
+  onRowClick
 }:{
   title:string; 
   rows:string[][]; 
   onStatusClick?:(row:string[])=>void;
   onEditClick?:(row:string[])=>void;
   onDeleteClick?:(row:string[])=>void;
+  onRowClick?:(row:string[])=>void;
 }){
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
@@ -112,23 +224,30 @@ export function TableCard({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] text-left text-sm">
           <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td className="px-5 py-10 text-center text-sm text-slate-400" colSpan={6}>
+                  No records found.
+                </td>
+              </tr>
+            )}
             {rows.map((r,i)=>(
-              <tr className="border-b border-slate-50 last:border-0" key={i}>
+              <tr className={`border-b border-slate-50 last:border-0 ${onRowClick ? 'cursor-pointer hover:bg-slate-50' : ''}`} key={i} onClick={() => { if (onRowClick) onRowClick(r); }}>
                 {r.slice(0,5).map((c,j)=>(
                   <td className={`px-5 py-4 ${j===0?'font-semibold text-dark':'text-slate-500'}`} key={j}>
                     {j===4 ?
-                      <button onClick={()=>onStatusClick && onStatusClick(r)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>
+                      <button onClick={(event)=>{ event.stopPropagation(); if (onStatusClick) onStatusClick(r); }} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>
                     : c}
                   </td>
                 ))}
                 <td className="px-5 py-4 text-right flex justify-end items-center gap-3">
                   {onEditClick && (
-                    <button onClick={() => onEditClick(r)} className="text-slate-400 hover:text-primary transition" title="Edit" aria-label="Edit record">
+                    <button onClick={(event) => { event.stopPropagation(); onEditClick(r); }} className="text-slate-400 hover:text-primary transition" title="Edit" aria-label="Edit record">
                       <Edit2 size={15} />
                     </button>
                   )}
                   {onDeleteClick && (
-                    <button onClick={() => onDeleteClick(r)} className="text-slate-400 hover:text-red-600 transition" title="Delete" aria-label="Delete record">
+                    <button onClick={(event) => { event.stopPropagation(); onDeleteClick(r); }} className="text-slate-400 hover:text-red-600 transition" title="Delete" aria-label="Delete record">
                       <Trash2 size={15} />
                     </button>
                   )}
@@ -149,7 +268,7 @@ const fetcher = (path: string) => fetch(`${apiUrl}${path}`, { headers: { Authori
 
 export function ModulePage({ module }: { module: string }) {
   const isPatients = module === 'patients';
-  // duplicate declaration removed
+  const { addToast } = useToast();
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -157,8 +276,12 @@ export function ModulePage({ module }: { module: string }) {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{ type: 'admit' | 'discharge', patientId: string } | null>(null);
+  const [approvalRequest, setApprovalRequest] = useState<any>(null);
+  const [isNewPatient, setIsNewPatient] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   // Auto-open modal if '?new=true' is in the URL query string
   useEffect(() => {
@@ -172,19 +295,32 @@ export function ModulePage({ module }: { module: string }) {
       }
     }
   }, [module]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [module, searchTerm, filterDate]);
   
   // Dynamic fetches
   const { data: stats, mutate: mutateStats } = useSWR(`/${module === 'settings' ? 'settings' : module}/stats`, fetcher, { refreshInterval: 5000 });
   const { data: listData, mutate } = useSWR(`/${module === 'settings' ? 'settings' : module}`, fetcher, { refreshInterval: 5000 });
+
+  const loading = !stats || !listData;
 
   // Build module data, overriding hard‑coded billing info with live data
   const defaultData = moduleData[module] || moduleData.patients;
   let dynamicRows = defaultData.rows;
   let dynamicStats = defaultData.stats;
 
+  // Extract items array from paginated response {items, pagination} or plain array
+  const dataRows: any[] = listData
+    ? Array.isArray(listData)
+      ? listData
+      : (listData as any)?.items ?? []
+    : [];
+
   // For any module, replace static rows with live data when available
-  if (Array.isArray(listData) && module !== 'billing') {
-    dynamicRows = listData.map((item: any) => {
+  if (module !== 'billing' && dataRows.length > 0) {
+    dynamicRows = dataRows.map((item: any) => {
       const values = Object.values(item);
       // Take first five fields and convert to strings
       return values.slice(0, 5).map((v) => (v !== undefined ? String(v) : ''));
@@ -193,8 +329,8 @@ export function ModulePage({ module }: { module: string }) {
 
   if (module === 'billing') {
     // Transform invoice list into table rows
-    if (Array.isArray(listData)) {
-      dynamicRows = listData.map((inv: any) => [
+    if (dataRows.length > 0) {
+      dynamicRows = dataRows.map((inv: any) => [
         inv.invoiceNumber ?? '',
         `${inv.patient?.firstName ?? ''} ${inv.patient?.lastName ?? ''}`.trim(),
         inv.items?.[0]?.description ?? '',
@@ -223,24 +359,44 @@ export function ModulePage({ module }: { module: string }) {
 
   const { data: beds } = useSWR(isPatients && actionModal?.type === 'admit' ? '/beds/available' : null, fetcher);
 
-  // Real-time socket listener: when billing:updated fires, refresh billing data
+    // Real-time socket listener for all modules
   useEffect(() => {
-    if (module !== 'billing') return;
     const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:4000';
     const socket = socketIO(apiBase, {
       auth: { token: typeof window !== 'undefined' ? localStorage.getItem('vasavi-token') || '' : '' },
     });
     socket.on('connect', () => socket.emit('join', 'authenticated'));
-    socket.on('billing:updated', () => {
-      mutate();
-      mutateStats();
-    });
+
+    // Global events: refresh everything
+    const refreshAll = () => { mutate(); mutateStats(); globalMutate('/notifications/unread') };
+    const refreshMutate = () => { mutate(); globalMutate('/notifications/unread') };
+
+    socket.on('billing:updated', refreshAll);
+    socket.on('appointment:created', refreshAll);
+    socket.on('appointment:updated', refreshMutate);
+    socket.on('patient:created', refreshAll);
+    socket.on('patient:admitted', refreshAll);
+    socket.on('patient:discharged', refreshAll);
+    socket.on('patient:transferred', refreshAll);
+    socket.on('pharmacy:dispensed', refreshAll);
+    socket.on('lab:completed', refreshAll);
+    socket.on('staff:attendance', refreshMutate);
+    socket.on('bed:status-updated', refreshAll);
+    socket.on('emergency:status-updated', refreshAll);
+    socket.on('emergency:assigned', refreshAll);
+    socket.on('appointment-request:created', refreshAll);
+    socket.on('appointment-request:updated', refreshMutate);
+    socket.on('appointment-request:deleted', refreshMutate);
+    socket.on('wards:updated', refreshAll);
+    socket.on('admission:updated', refreshAll);
+    socket.on('invoice:updated', refreshMutate);
+
     return () => { socket.disconnect(); };
-  }, [module, mutate, mutateStats]);
+  }, [mutate, mutateStats]);
 
   // Dropdown list requirements
   const needDepts = ['appointments', 'doctors', 'requests'].includes(module);
-  const needDocs = ['appointments'].includes(module);
+  const needDocs = ['appointments', 'requests'].includes(module);
   const needPats = ['appointments', 'billing', 'laboratory'].includes(module);
   const needTests = ['laboratory'].includes(module);
   const needRoles = ['settings'].includes(module);
@@ -272,7 +428,7 @@ export function ModulePage({ module }: { module: string }) {
         ['Total requests', stats.totalRequests?.toLocaleString() || '0'],
         ['New', stats.new?.toLocaleString() || '0'],
         ['Confirmed', stats.confirmed?.toLocaleString() || '0'],
-        ['Cancelled', stats.cancelled?.toLocaleString() || '0']
+        ['Rejected', stats.rejected?.toLocaleString() || '0']
       ];
     } else if (module === 'doctors') {
       d.stats = [
@@ -336,8 +492,15 @@ export function ModulePage({ module }: { module: string }) {
   // Map API data to display rows
   let displayRows = d.rows;
 
-  if (listData && Array.isArray(listData)) {
-    displayRows = listData.map((item: any) => {
+  // Extract items whether API returns array or paginated {items, pagination}
+  const listItems: any[] = listData
+    ? Array.isArray(listData)
+      ? listData
+      : (listData as any)?.items ?? []
+    : [];
+
+  if (listItems.length > 0) {
+    displayRows = listItems.map((item: any) => {
       let r: string[] = [];
       switch (module) {
         case 'patients': {
@@ -495,6 +658,9 @@ export function ModulePage({ module }: { module: string }) {
     const admitDate = row[6];
     return matchesSearch && admitDate === filterDate;
   });
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const exportCsv = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
@@ -513,11 +679,62 @@ export function ModulePage({ module }: { module: string }) {
     const form = e.currentTarget;
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData);
+
+    // NEW PATIENT FLOW: check if creating appointment with new patient
+    if (module === 'appointments' && !isEdit) {
+      const chk = document.getElementById('newPatientChk') as HTMLInputElement;
+      if (chk && chk.checked) {
+        const withPatientPayload = {
+          patient: {
+            firstName: payload.newFirstName,
+            lastName: payload.newLastName,
+            phone: payload.newPhone,
+            email: payload.newEmail || undefined,
+            dateOfBirth: payload.newAge ? new Date(new Date().getFullYear() - Number(payload.newAge), 0, 1) : new Date(payload.newDob as string),
+            gender: payload.newGender,
+          },
+          appointment: {
+            departmentId: payload.departmentId,
+            doctorId: payload.doctorId,
+            scheduledAt: new Date(payload.scheduledAt as string),
+            reason: payload.reason || undefined,
+            notes: payload.notes || undefined,
+            amount: payload.amount ? Number(payload.amount) : undefined,
+            paymentStatus: payload.paymentStatus || undefined,
+          },
+        };
+
+        const res = await fetch(apiUrl + '/appointments/with-patient', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+          },
+          body: JSON.stringify(withPatientPayload),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'Failed to create appointment with new patient');
+        }
+
+        await mutate();
+        addToast('success', 'Appointment Created', 'New patient registered and appointment booked successfully.');
+        setShowAddModal(false);
+        return;
+      }
+    }
     
     const url = isEdit 
       ? `${apiUrl}/${module === 'settings' ? 'settings' : module}/${editingItem.id}` 
       : `${apiUrl}/${module === 'settings' ? 'settings' : module}`;
     const method = isEdit ? 'PUT' : 'POST';
+
+    // Optimistic: close modal immediately
+    addToast('info', isEdit ? 'Saving...' : 'Creating...', `${module} record is being ${isEdit ? 'updated' : 'created'}.`);
+    setShowAddModal(false);
+    setShowEditModal(false);
+    setEditingItem(null);
 
     try {
       const res = await fetch(url, {
@@ -533,18 +750,24 @@ export function ModulePage({ module }: { module: string }) {
         throw new Error(errorData.message || `Failed to ${isEdit ? 'update' : 'create'} record`);
       }
       await mutate();
-      setShowAddModal(false);
-      setShowEditModal(false);
-      setEditingItem(null);
+      addToast('success', isEdit ? 'Record Updated' : 'Record Created', `${module} record was ${isEdit ? 'updated' : 'created'} successfully.`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast('error', 'Operation Failed', msg);
     }
   };
 
   const executeDelete = async () => {
     if (!deletingItemId) return;
+    
+    // Optimistic: close modal and remove row immediately
+    const deletedId = deletingItemId;
+    addToast('info', 'Deleting...', `${module} record is being deleted.`);
+    setShowDeleteModal(false);
+    setDeletingItemId(null);
+
     try {
-      const res = await fetch(`${apiUrl}/${module === 'settings' ? 'settings' : module}/${deletingItemId}`, {
+      const res = await fetch(`${apiUrl}/${module === 'settings' ? 'settings' : module}/${deletedId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${localStorage.getItem('vasavi-token') || ''}`,
@@ -555,10 +778,10 @@ export function ModulePage({ module }: { module: string }) {
         throw new Error(errorData.message || 'Failed to delete record');
       }
       await mutate();
-      setShowDeleteModal(false);
-      setDeletingItemId(null);
+      addToast('success', 'Record Deleted', `${module} record was deleted successfully.`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast('error', 'Operation Failed', msg);
     }
   };
 
@@ -566,11 +789,18 @@ export function ModulePage({ module }: { module: string }) {
     e.preventDefault();
     if (!actionModal) return;
     
+    const actionType = actionModal.type;
+    const patientId = actionModal.patientId;
     const formData = new FormData(e.currentTarget);
-    const payload = actionModal.type === 'admit' ? { bedId: formData.get('bedId') } : {};
+    
+    // Optimistic: close modal immediately
+    addToast('info', 'Processing...', `${actionType === 'admit' ? 'Admitting' : 'Discharging'} patient.`);
+    setActionModal(null);
+    
+    const payload = actionType === 'admit' ? { bedId: formData.get('bedId') } : {};
 
     try {
-      const res = await fetch(`${apiUrl}/patients/${actionModal.patientId}/${actionModal.type}`, {
+      const res = await fetch(`${apiUrl}/patients/${patientId}/${actionType}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -580,14 +810,26 @@ export function ModulePage({ module }: { module: string }) {
       });
       if (!res.ok) {
         const errData = await res.json().catch(()=>({}));
-        throw new Error(errData.message || `Failed to ${actionModal.type} patient`);
+        throw new Error(errData.message || `Failed to ${actionType} patient`);
       }
       await mutate();
-      setActionModal(null);
-    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+      addToast('success', `Patient ${actionType === 'admit' ? 'Admitted' : 'Discharged'}`, `Patient was ${actionType === 'admit' ? 'admitted to' : 'discharged from'} the hospital.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast('error', 'Action Failed', msg);
+    }
   };
 
   const handleStatusClick = (row: string[]) => {
+    if (module === 'requests') {
+      const items = Array.isArray(listData) ? listData : (listData as any)?.items ?? [];
+      const request = items.find((item: any) => item.id === row[5]);
+      if (request?.status === 'NEW' || request?.status === 'RESCHEDULED') {
+        setApprovalRequest(request);
+      }
+      return;
+    }
+
     if (!isPatients) return;
     const status = row[4];
     const patientId = row[5];
@@ -598,9 +840,19 @@ export function ModulePage({ module }: { module: string }) {
     }
   };
 
+  const handleRowClick = (row: string[]) => {
+    if (module === 'patients' && row[5]) {
+      window.location.href = `/dashboard/patients/${row[5]}`;
+    }
+    if (module === 'wards' && row[5]) {
+      window.location.href = `/dashboard/wards/${row[5]}`;
+    }
+  };
+
   const handleEditClick = (row: string[]) => {
     const id = row[5];
-    const item = listData?.find((x: any) => x.id === id);
+    const items = Array.isArray(listData) ? listData : (listData as any)?.items ?? [];
+    const item = items.find((x: any) => x.id === id);
     if (item) {
       setEditingItem(item);
       setShowEditModal(true);
@@ -611,6 +863,40 @@ export function ModulePage({ module }: { module: string }) {
     const id = row[5];
     setDeletingItemId(id);
     setShowDeleteModal(true);
+  };
+
+  const approveRequest = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!approvalRequest) return;
+
+    const requestId = approvalRequest.id;
+    const patientName = approvalRequest.patientName;
+    const payload = Object.fromEntries(new FormData(event.currentTarget));
+
+    // Optimistic: close modal immediately
+    addToast('info', 'Approving...', `Processing appointment for ${patientName}.`);
+    setApprovalRequest(null);
+
+    try {
+      const res = await fetch(`${apiUrl}/requests/${requestId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('vasavi-token') || ''}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to approve appointment request');
+      }
+      await mutate();
+      await mutateStats();
+      addToast('success', 'Request Approved', `${patientName}'s appointment was approved and booked.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast('error', 'Approval Failed', msg);
+    }
   };
 
   const renderFormFields = (item?: any) => {
@@ -643,6 +929,7 @@ export function ModulePage({ module }: { module: string }) {
       case 'appointments':
         return (
           <>
+            <div className="flex items-center gap-2 mb-2"><input type="checkbox" id="newPatientChk" checked={isNewPatient} onChange={(e) => setIsNewPatient(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary" /><label htmlFor="newPatientChk" className="text-xs font-semibold text-slate-600 cursor-pointer select-none">Create new patient</label></div>
             <label className="block text-xs font-semibold text-slate-600">Select Patient
               <select name="patientId" defaultValue={item?.patientId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
                 <option value="">Choose patient...</option>
@@ -651,6 +938,7 @@ export function ModulePage({ module }: { module: string }) {
                 ))}
               </select>
             </label>
+            <div id="newPatientFields" className={isNewPatient ? 'space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4' : 'hidden space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4'}><p className="text-xs font-bold text-primary">New Patient Details</p><div className="grid grid-cols-2 gap-3"><label className="block text-xs font-semibold text-slate-600">First Name<input name="newFirstName" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="First name" /></label><label className="block text-xs font-semibold text-slate-600">Last Name<input name="newLastName" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="Last name" /></label></div><div className="grid grid-cols-2 gap-3"><label className="block text-xs font-semibold text-slate-600">Phone<input name="newPhone" type="tel" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="+91 98765 43210" /></label><label className="block text-xs font-semibold text-slate-600">Email (optional)<input name="newEmail" type="email" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="patient@example.com" /></label></div><div className="grid grid-cols-2 gap-3"><label className="block text-xs font-semibold text-slate-600">Date of Birth<input name="newDob" type="date" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" /></label><label className="block text-xs font-semibold text-slate-600">Gender<select name="newGender" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm"><option value="">Select gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></label></div></div><div className="col-span-2"><label className="block text-xs font-semibold text-slate-600">Address<textarea name="newAddress" rows={2} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="Street, city, pincode..."></textarea></label></div>
             <label className="block text-xs font-semibold text-slate-600">Select Doctor
               <select name="doctorId" defaultValue={item?.doctorId || ''} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
                 <option value="">Choose doctor...</option>
@@ -716,7 +1004,9 @@ export function ModulePage({ module }: { module: string }) {
               <select name="status" defaultValue={item?.status || 'NEW'} className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
                 <option value="NEW">NEW</option>
                 <option value="CONFIRMED">CONFIRMED</option>
+                <option value="RESCHEDULED">RESCHEDULED</option>
                 <option value="CANCELLED">CANCELLED</option>
+                <option value="REJECTED">REJECTED</option>
               </select>
             </label>
           </>
@@ -931,6 +1221,10 @@ export function ModulePage({ module }: { module: string }) {
     }
   };
 
+  if (loading) {
+    return <ModulePageSkeleton />;
+  }
+
   return (
     <>
       <PageTitle 
@@ -945,7 +1239,7 @@ export function ModulePage({ module }: { module: string }) {
             <p className="text-xs font-medium text-slate-400">{a}</p>
             <p className="mt-2 font-poppins text-2xl font-semibold">{b}</p>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${55 + i * 10}%` }} />
+              <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(8, 50 + i * 12))}%` }} />
             </div>
           </div>
         ))}
@@ -974,11 +1268,29 @@ export function ModulePage({ module }: { module: string }) {
       </div>
       <TableCard 
         title={`Recent ${d.title.toLowerCase()}`} 
-        rows={filteredRows} 
-        onStatusClick={isPatients ? handleStatusClick : undefined}
+        rows={paginatedRows} 
+        onStatusClick={isPatients || module === 'requests' ? handleStatusClick : undefined}
         onEditClick={handleEditClick}
         onDeleteClick={handleDeleteClick}
+        onRowClick={module === 'patients' || module === 'wards' ? handleRowClick : undefined}
       />
+      <div className="mt-4 flex flex-col items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500 shadow-sm sm:flex-row">
+        <span>
+          Showing {filteredRows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+          -{Math.min(currentPage * pageSize, filteredRows.length)} of {filteredRows.length}
+        </span>
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary !px-3 !py-2" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+            Previous
+          </button>
+          <span className="min-w-16 text-center text-xs font-semibold text-slate-400">
+            {currentPage} / {totalPages}
+          </span>
+          <button className="btn-secondary !px-3 !py-2" disabled={currentPage === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+            Next
+          </button>
+        </div>
+      </div>
       
       {showAddModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
@@ -1019,6 +1331,58 @@ export function ModulePage({ module }: { module: string }) {
               <button type="button" className="btn-secondary !px-4" onClick={() => { setShowDeleteModal(false); setDeletingItemId(null); }}>Cancel</button>
               <button type="button" className="btn-primary !px-6 bg-red-600 hover:bg-red-700 border-red-600 hover:border-red-700 text-white" onClick={executeDelete}>Delete</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {approvalRequest && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
+            <h2 className="font-poppins text-xl font-semibold mb-2">Approve Appointment Request</h2>
+            <p className="text-sm text-slate-500 mb-6">
+              Assign a doctor and confirmed consultation time for {approvalRequest.patientName}.
+            </p>
+            <form onSubmit={approveRequest} className="space-y-4">
+              <label className="block text-xs font-semibold text-slate-600">
+                Doctor
+                <select name="doctorId" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                  <option value="">Choose doctor...</option>
+                  {doctorsList
+                    ?.filter((doctor: any) => doctor.departmentId === approvalRequest.departmentId)
+                    .map((doctor: any) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.user?.name} - {doctor.specialization}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block text-xs font-semibold text-slate-600">
+                Confirmed Date & Time
+                <input
+                  name="scheduledAt"
+                  type="datetime-local"
+                  defaultValue={
+                    approvalRequest.preferredDate
+                      ? new Date(new Date(approvalRequest.preferredDate).getTime() - new Date(approvalRequest.preferredDate).getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+                      : ''
+                  }
+                  className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm"
+                  required
+                />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600">
+                Notes
+                <textarea name="notes" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" rows={3} />
+              </label>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                <button type="button" className="btn-secondary !px-4" onClick={() => setApprovalRequest(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary !px-6">
+                  Approve & Book
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
