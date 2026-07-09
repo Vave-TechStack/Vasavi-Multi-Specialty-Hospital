@@ -11,6 +11,7 @@ import { useToast } from '@/components/toast-provider';
 
 import { io as socketIO } from 'socket.io-client';
 import { useRouter } from 'next/navigation';
+import { GenerateBillModal, PaymentModal, ReceiptModal } from '@/components/billing-modals';
 
 function getGreeting(): string {
   if (typeof window === 'undefined') return 'Good morning';
