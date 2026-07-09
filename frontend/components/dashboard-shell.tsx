@@ -50,6 +50,7 @@ function getUserInitials(): string {
 export function DashboardShell({children}:{children:React.ReactNode}) {
   const [open,setOpen]=useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [userInitials, setUserInitials] = useState('AR');
   const pathname=usePathname();
   const router=useRouter();
@@ -58,9 +59,17 @@ export function DashboardShell({children}:{children:React.ReactNode}) {
   useEffect(() => {
     setUserInitials(getUserInitials());
   }, []);
-  
-  const { data: searchResults } = useSWR<SearchResult[]>(
-    searchTerm.trim().length >= 2 ? `/search?q=${encodeURIComponent(searchTerm.trim())}` : null,
+
+  // Debounce search input to avoid excessive API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const { data: searchResults, isValidating: searchLoading } = useSWR<SearchResult[]>(
+    debouncedSearch.trim().length >= 2 ? `/search?q=${encodeURIComponent(debouncedSearch.trim())}` : null,
     fetcher,
     { keepPreviousData: true }
   );
@@ -86,6 +95,7 @@ export function DashboardShell({children}:{children:React.ReactNode}) {
 
   function openResult(href: string) {
     setSearchTerm('');
+    setDebouncedSearch('');
     router.push(href);
   }
 
@@ -99,10 +109,12 @@ export function DashboardShell({children}:{children:React.ReactNode}) {
         <div className="relative hidden max-w-md flex-1 sm:block">
           <Search className="absolute left-3 top-2.5" size={17} style={{ color: 'var(--text-muted)' }}/>
           <input aria-label="Search hospital records" placeholder="Search patients, doctors, invoices..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="w-full rounded-full border-0 py-2 pl-10 text-sm focus:ring-primary" style={{ backgroundColor: 'var(--skeleton-bg)', color: 'var(--text-primary)' }}/>
-          {searchTerm.trim().length >= 2 && (
+          {debouncedSearch.trim().length >= 2 && (
             <div className="absolute left-0 right-0 top-12 overflow-hidden rounded-2xl border shadow-soft" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-white)' }}>
               <div className="max-h-96 overflow-y-auto p-2">
-                {searchResults && searchResults.length > 0 ? searchResults.map((result, index) => (
+                {searchLoading ? (
+                  <p className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>Searching...</p>
+                ) : searchResults && searchResults.length > 0 ? searchResults.map((result, index) => (
                   <button key={`${result.type}-${result.label}-${index}`} type="button" onClick={() => openResult(result.href)} className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition" style={{ color: 'var(--text-primary)' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                     <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold uppercase text-primary">{result.type}</span>
                     <span className="min-w-0">

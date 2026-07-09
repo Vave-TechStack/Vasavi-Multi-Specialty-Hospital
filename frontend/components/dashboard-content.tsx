@@ -1,6 +1,5 @@
 'use client';
-
-import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronRight, CircleDollarSign, Download, Edit2, MoreHorizontal, Plus, Search, Stethoscope, Trash2, Users } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Building2, CalendarDays, ChevronRight, CircleDollarSign, Clock, Download, Edit2, FlaskConical, Hospital, MoreHorizontal, Plus, Search, Stethoscope, Trash2, Users, UserPlus, Activity, AlertCircle, CheckCircle2, Upload } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { LucideIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -156,12 +155,12 @@ export function Overview(){
     </div>
     <div className="mt-6">
       {displayAppointments.length > 0 ? (
-        <TableCard title="Today\'s appointments" rows={displayAppointments}/>
+        <TableCard title="Today's appointments" rows={displayAppointments}/>
       ) : (
         <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-10 text-center shadow-sm">
           <CalendarDays size={32} className="text-slate-300 mb-3" />
           <h3 className="font-poppins text-base font-semibold mb-1">No appointments today</h3>
-          <p className="text-sm text-slate-500">When patients book appointments, they\'ll appear here.</p>
+          <p className="text-sm text-slate-500">When patients book appointments, they&apos;ll appear here.</p>
         </div>
       )}
     </div>
@@ -236,7 +235,7 @@ export function TableCard({
                 {r.slice(0,5).map((c,j)=>(
                   <td className={`px-5 py-4 ${j===0?'font-semibold text-dark':'text-slate-500'}`} key={j}>
                     {j===4 ?
-                      <button onClick={(event)=>{ event.stopPropagation(); if (onStatusClick) onStatusClick(r); }} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':'bg-primary/10 text-primary'}`}>{c}</button>
+                      <button onClick={(event)=>{ event.stopPropagation(); if (onStatusClick) onStatusClick(r); }} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${onStatusClick?'cursor-pointer hover:opacity-80':''} ${c==='Admitted'?'bg-amber-100 text-amber-700':c==='Discharged'?'bg-slate-100 text-slate-600':c==='ORDERED'?'bg-blue-100 text-blue-700':c==='SAMPLE_COLLECTED'?'bg-violet-100 text-violet-700':c==='PROCESSING'?'bg-amber-100 text-amber-700':c==='REPORT_UPLOADED'?'bg-cyan-100 text-cyan-700':c==='RESULTS_READY'?'bg-green-100 text-green-700':c==='VERIFIED'?'bg-teal-100 text-teal-700':c==='APPROVED'?'bg-emerald-100 text-emerald-700':c==='DELIVERED'?'bg-indigo-100 text-indigo-700':c==='CRITICAL'?'bg-red-100 text-red-700':c==='CANCELLED'?'bg-slate-100 text-slate-500':'bg-primary/10 text-primary'}`}>{c}</button>
                     : c}
                   </td>
                 ))}
@@ -277,6 +276,7 @@ export function ModulePage({ module }: { module: string }) {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{ type: 'admit' | 'discharge', patientId: string } | null>(null);
   const [approvalRequest, setApprovalRequest] = useState<any>(null);
+  const [labActionModal, setLabActionModal] = useState<{ action: 'collect' | 'process' | 'verify' | 'approve' | 'assign-tech' | 'upload-report' | 'deliver'; orderId: string; order?: any } | null>(null);
   const [isNewPatient, setIsNewPatient] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
@@ -380,6 +380,15 @@ export function ModulePage({ module }: { module: string }) {
     socket.on('patient:transferred', refreshAll);
     socket.on('pharmacy:dispensed', refreshAll);
     socket.on('lab:completed', refreshAll);
+    socket.on('lab:created', refreshAll);
+    socket.on('lab:updated', refreshMutate);
+    socket.on('lab:deleted', refreshMutate);
+    socket.on('lab:collected', refreshAll);
+    socket.on('lab:verified', refreshAll);
+    socket.on('lab:approved', refreshAll);
+    socket.on('lab:report-uploaded', refreshAll);
+    socket.on('lab:technician-assigned', refreshAll);
+    socket.on('lab:delivered', refreshAll);
     socket.on('staff:attendance', refreshMutate);
     socket.on('bed:status-updated', refreshAll);
     socket.on('emergency:status-updated', refreshAll);
@@ -830,6 +839,29 @@ export function ModulePage({ module }: { module: string }) {
       return;
     }
 
+    if (module === 'laboratory') {
+      const items = Array.isArray(listData) ? listData : (listData as any)?.items ?? [];
+      const order = items.find((item: any) => item.id === row[5]);
+      if (!order) return;
+      const status = order.status;
+      if (status === 'ORDERED') {
+        setLabActionModal({ action: 'collect', orderId: order.id, order });
+      } else if (status === 'SAMPLE_COLLECTED') {
+        setLabActionModal({ action: 'process', orderId: order.id, order });
+      } else if (status === 'PROCESSING' || status === 'REPORT_UPLOADED') {
+        setLabActionModal({ action: 'upload-report', orderId: order.id, order });
+      } else if (status === 'RESULTS_READY') {
+        setLabActionModal({ action: 'verify', orderId: order.id, order });
+      } else if (status === 'VERIFIED') {
+        setLabActionModal({ action: 'approve', orderId: order.id, order });
+      } else if (status === 'APPROVED') {
+        setLabActionModal({ action: 'deliver', orderId: order.id, order });
+      } else if (status === 'PROCESSING' || status === 'SAMPLE_COLLECTED') {
+        setLabActionModal({ action: 'assign-tech', orderId: order.id, order });
+      }
+      return;
+    }
+
     if (!isPatients) return;
     const status = row[4];
     const patientId = row[5];
@@ -1269,7 +1301,7 @@ export function ModulePage({ module }: { module: string }) {
       <TableCard 
         title={`Recent ${d.title.toLowerCase()}`} 
         rows={paginatedRows} 
-        onStatusClick={isPatients || module === 'requests' ? handleStatusClick : undefined}
+        onStatusClick={isPatients || module === 'requests' || module === 'laboratory' ? handleStatusClick : undefined}
         onEditClick={handleEditClick}
         onDeleteClick={handleDeleteClick}
         onRowClick={module === 'patients' || module === 'wards' ? handleRowClick : undefined}
@@ -1383,6 +1415,611 @@ export function ModulePage({ module }: { module: string }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {labActionModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
+            {labActionModal.action === 'collect' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-blue-100 text-blue-600">
+                    <FlaskConical size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Collect Sample</h2>
+                    <p className="text-sm text-slate-500">Record sample collection details</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const form = e.currentTarget;
+                  const formData = new FormData(form);
+                  const payload = {
+                    sampleId: formData.get('sampleId'),
+                    sampleType: formData.get('sampleType'),
+                    collectedBy: formData.get('collectedBy'),
+                  };
+                  addToast('info', 'Collecting sample...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/collect', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to collect sample');
+                    }
+                    await mutate();
+                    addToast('success', 'Sample Collected', 'Sample has been collected and recorded.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Collection Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Sample ID / Barcode
+                    <input name="sampleId" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="e.g. SMP-001" required />
+                  </label>
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Sample Type
+                    <select name="sampleType" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                      <option value="">Select type...</option>
+                      <option value="Blood">Blood</option>
+                      <option value="Urine">Urine</option>
+                      <option value="Stool">Stool</option>
+                      <option value="Sputum">Sputum</option>
+                      <option value="Tissue">Tissue (Biopsy)</option>
+                      <option value="Swab">Swab</option>
+                      <option value="CSF">CSF</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Collected By
+                    <input name="collectedBy" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="Technician name" required />
+                  </label>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6">Confirm Collection</button>
+                  </div>
+                </form>
+              </>
+            )}
+            {labActionModal.action === 'process' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-600">
+                    <Activity size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Start Processing</h2>
+                    <p className="text-sm text-slate-500">Begin lab processing for collected sample</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  addToast('info', 'Starting processing...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/status', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify({ status: 'PROCESSING' }),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to start processing');
+                    }
+                    await mutate();
+                    addToast('success', 'Processing Started', 'Sample is now being processed.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Action Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+                    <p className="font-semibold mb-1">Advance to Processing?</p>
+                    <p>This marks the sample as being processed in the lab. Continue to submit results once testing is complete.</p>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6 bg-amber-600 hover:bg-amber-700 border-amber-600">Start Processing</button>
+                  </div>
+                </form>
+              </>
+            )}
+            {labActionModal.action === 'verify' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-600">
+                    <CheckCircle2 size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Verify Results</h2>
+                    <p className="text-sm text-slate-500">Confirm that test results are accurate</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  addToast('info', 'Verifying...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/verify', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify({}),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to verify results');
+                    }
+                    await mutate();
+                    addToast('success', 'Results Verified', 'Test results have been verified.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Verification Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+                    <p className="font-semibold mb-1">Are you sure you want to verify these results?</p>
+                    <p>This confirms that all test values have been checked and are accurate.</p>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6 bg-amber-600 hover:bg-amber-700 border-amber-600">Verify Results</button>
+                  </div>
+                </form>
+              </>
+            )}
+            {labActionModal.action === 'approve' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-emerald-100 text-emerald-600">
+                    <CheckCircle2 size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Approve Report</h2>
+                    <p className="text-sm text-slate-500">Final approval to publish the lab report</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  addToast('info', 'Approving...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/approve', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify({}),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to approve report');
+                    }
+                    await mutate();
+                    addToast('success', 'Report Approved', 'Lab report has been approved and published.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Approval Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <div className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">
+                    <p className="font-semibold mb-1">Final approval step</p>
+                    <p>This will mark the report as <strong>Approved</strong> and make it available for patient records and billing.</p>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6 bg-emerald-600 hover:bg-emerald-700 border-emerald-600">Approve & Publish</button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {labActionModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
+            {labActionModal.action === 'collect' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-blue-100 text-blue-600">
+                    <FlaskConical size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Collect Sample</h2>
+                    <p className="text-sm text-slate-500">Record sample collection details</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const form = e.currentTarget;
+                  const formData = new FormData(form);
+                  const payload = {
+                    sampleId: formData.get('sampleId'),
+                    sampleType: formData.get('sampleType'),
+                    collectedBy: formData.get('collectedBy'),
+                  };
+                  addToast('info', 'Collecting sample...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/collect', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to collect sample');
+                    }
+                    await mutate();
+                    addToast('success', 'Sample Collected', 'Sample has been collected and recorded.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Collection Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Sample ID / Barcode
+                    <input name="sampleId" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="e.g. SMP-001" required />
+                  </label>
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Sample Type
+                    <select name="sampleType" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" required>
+                      <option value="">Select type...</option>
+                      <option value="Blood">Blood</option>
+                      <option value="Urine">Urine</option>
+                      <option value="Stool">Stool</option>
+                      <option value="Sputum">Sputum</option>
+                      <option value="Tissue">Tissue (Biopsy)</option>
+                      <option value="Swab">Swab</option>
+                      <option value="CSF">CSF</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Collected By
+                    <input name="collectedBy" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="Technician name" required />
+                  </label>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6">Confirm Collection</button>
+                  </div>
+                </form>
+              </>
+            )}
+            {labActionModal.action === 'process' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-600">
+                    <Activity size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Start Processing</h2>
+                    <p className="text-sm text-slate-500">Begin lab processing for collected sample</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  addToast('info', 'Starting processing...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/status', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify({ status: 'PROCESSING' }),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to start processing');
+                    }
+                    await mutate();
+                    addToast('success', 'Processing Started', 'Sample is now being processed.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Action Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+                    <p className="font-semibold mb-1">Advance to Processing?</p>
+                    <p>This marks the sample as being processed in the lab. Continue to submit results once testing is complete.</p>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6 bg-amber-600 hover:bg-amber-700 border-amber-600">Start Processing</button>
+                  </div>
+                </form>
+              </>
+            )}
+            {labActionModal.action === 'verify' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-600">
+                    <CheckCircle2 size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Verify Results</h2>
+                    <p className="text-sm text-slate-500">Confirm that test results are accurate</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  addToast('info', 'Verifying...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/verify', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify({}),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to verify results');
+                    }
+                    await mutate();
+                    addToast('success', 'Results Verified', 'Test results have been verified.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Verification Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+                    <p className="font-semibold mb-1">Are you sure you want to verify these results?</p>
+                    <p>This confirms that all test values have been checked and are accurate.</p>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6 bg-amber-600 hover:bg-amber-700 border-amber-600">Verify Results</button>
+                  </div>
+                </form>
+              </>
+            )}
+            {labActionModal.action === 'approve' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="grid size-10 place-items-center rounded-xl bg-emerald-100 text-emerald-600">
+                    <CheckCircle2 size={20} />
+                  </span>
+                  <div>
+                    <h2 className="font-poppins text-xl font-semibold">Approve Report</h2>
+                    <p className="text-sm text-slate-500">Final approval to publish the lab report</p>
+                  </div>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  addToast('info', 'Approving...', '');
+                  setLabActionModal(null);
+                  try {
+                    const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/approve', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                      },
+                      body: JSON.stringify({}),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.message || 'Failed to approve report');
+                    }
+                    await mutate();
+                    addToast('success', 'Report Approved', 'Lab report has been approved and published.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    addToast('error', 'Approval Failed', msg);
+                  }
+                }} className="space-y-4">
+                  <div className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">
+                    <p className="font-semibold mb-1">Final approval step</p>
+                    <p>This will mark the report as <strong>Approved</strong> and make it available for patient records and billing.</p>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                    <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary !px-6 bg-emerald-600 hover:bg-emerald-700 border-emerald-600">Approve & Publish</button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {labActionModal && labActionModal.action === 'deliver' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="grid size-10 place-items-center rounded-xl bg-indigo-100 text-indigo-600">
+                  <CheckCircle2 size={20} />
+                </span>
+                <div>
+                  <h2 className="font-poppins text-xl font-semibold">Deliver Report</h2>
+                  <p className="text-sm text-slate-500">Mark report as delivered to patient</p>
+                </div>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                addToast('info', 'Delivering...', '');
+                setLabActionModal(null);
+                try {
+                  const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/deliver', {
+                    method: 'PATCH',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                    },
+                    body: JSON.stringify({ deliveredBy: getUserName() }),
+                  });
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to deliver report');
+                  }
+                  await mutate();
+                  addToast('success', 'Report Delivered', 'Lab report has been marked as delivered.');
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  addToast('error', 'Delivery Failed', msg);
+                }
+              }} className="space-y-4">
+                <div className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-700">
+                  <p className="font-semibold mb-1">Confirm delivery</p>
+                  <p>This marks the lab report as <strong>Delivered</strong> to the patient or requesting doctor.</p>
+                </div>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                  <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                  <button type="submit" className="btn-primary !px-6 bg-indigo-600 hover:bg-indigo-700 border-indigo-600">Confirm Delivery</button>
+                </div>
+              </form>
+            </>
+          </div>
+        </div>
+      )}
+
+      {labActionModal && labActionModal.action === 'assign-tech' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-600">
+                  <Users size={20} />
+                </span>
+                <div>
+                  <h2 className="font-poppins text-xl font-semibold">Assign Technician</h2>
+                  <p className="text-sm text-slate-500">Assign a lab technician to this order</p>
+                </div>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const formData = new FormData(form);
+                const payload = {
+                  technicianName: formData.get('technicianName'),
+                  technicianId: formData.get('technicianId') || undefined,
+                };
+                addToast('info', 'Assigning technician...', '');
+                setLabActionModal(null);
+                try {
+                  const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/assign-technician', {
+                    method: 'PATCH',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                    },
+                    body: JSON.stringify(payload),
+                  });
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to assign technician');
+                  }
+                  await mutate();
+                  addToast('success', 'Technician Assigned', 'Lab technician has been assigned to this order.');
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  addToast('error', 'Assignment Failed', msg);
+                }
+              }} className="space-y-4">
+                <label className="block text-xs font-semibold text-slate-600">
+                  Technician Name
+                  <input name="technicianName" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="e.g. Rajesh Kumar" required />
+                </label>
+                <label className="block text-xs font-semibold text-slate-600">
+                  Technician ID (optional)
+                  <input name="technicianId" className="mt-1.5 w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm" placeholder="e.g. T-101" />
+                </label>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                  <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                  <button type="submit" className="btn-primary !px-6">Assign</button>
+                </div>
+              </form>
+            </>
+          </div>
+        </div>
+      )}
+
+      {labActionModal && labActionModal.action === 'upload-report' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-soft">
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="grid size-10 place-items-center rounded-xl bg-cyan-100 text-cyan-600">
+                  <Upload size={20} />
+                </span>
+                <div>
+                  <h2 className="font-poppins text-xl font-semibold">Upload Report</h2>
+                  <p className="text-sm text-slate-500">Upload lab report file (PDF, image, or document)</p>
+                </div>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const fileInput = form.querySelector('input[type="file"]') as HTMLInputElement;
+                const file = fileInput?.files?.[0];
+                if (!file) {
+                  addToast('error', 'No File', 'Please select a file to upload.');
+                  return;
+                }
+                addToast('info', 'Uploading report...', '');
+                setLabActionModal(null);
+                try {
+                  const formData = new FormData();
+                  formData.append('report', file);
+                  const res = await fetch(apiUrl + '/laboratory/' + labActionModal.orderId + '/upload-report', {
+                    method: 'POST',
+                    headers: {
+                      Authorization: 'Bearer ' + (localStorage.getItem('vasavi-token') || ''),
+                    },
+                    body: formData,
+                  });
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to upload report');
+                  }
+                  await mutate();
+                  addToast('success', 'Report Uploaded', 'Lab report has been uploaded successfully.');
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  addToast('error', 'Upload Failed', msg);
+                }
+              }} className="space-y-4">
+                <div className="rounded-xl border-2 border-dashed border-slate-200 p-6 text-center">
+                  <Upload size={32} className="mx-auto text-slate-300 mb-2" />
+                  <p className="text-sm text-slate-500 mb-1">Drop file here or click to browse</p>
+                  <p className="text-xs text-slate-400">PDF, PNG, JPG, DOC, XLS — Max 10MB</p>
+                  <input type="file" name="report" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx" className="mt-3 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20" required />
+                </div>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                  <button type="button" className="btn-secondary !px-4" onClick={() => setLabActionModal(null)}>Cancel</button>
+                  <button type="submit" className="btn-primary !px-6">Upload</button>
+                </div>
+              </form>
+            </>
           </div>
         </div>
       )}

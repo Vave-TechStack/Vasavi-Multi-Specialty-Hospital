@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, CalendarDays, CircleAlert, FlaskConical, HeartPulse, Hospital, X } from 'lucide-react';
+import { Bell, CalendarDays, CircleAlert, FlaskConical, HeartPulse, Hospital, Pill, UserPlus, X, BedDouble, LogOut } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { io as socketIO } from 'socket.io-client';
 import useSWR, { mutate as globalMutate } from 'swr';
@@ -15,27 +15,39 @@ type NotificationItem = {
   id: string;
   title: string;
   message: string;
-  type: 'appointment' | 'billing' | 'lab' | 'emergency' | 'admission' | 'system';
+  type: 'APPOINTMENT' | 'APPOINTMENT_CANCELLED' | 'PATIENT_REGISTRATION' | 'ADMISSION' | 'DISCHARGE' | 'BED_STATUS' | 'BILLING' | 'PHARMACY_LOW_STOCK' | 'LAB_RESULT' | 'EMERGENCY' | 'FOLLOW_UP' | 'SYSTEM';
   createdAt: string;
-  unread: boolean;
+  readAt: string | null;
 };
 
 const typeIcons: Record<string, React.ReactNode> = {
-  appointment: <CalendarDays size={14} />,
-  billing: <Hospital size={14} />,
-  lab: <FlaskConical size={14} />,
-  emergency: <CircleAlert size={14} />,
-  admission: <HeartPulse size={14} />,
-  system: <Bell size={14} />,
+  APPOINTMENT: <CalendarDays size={14} />,
+  APPOINTMENT_CANCELLED: <X size={14} />,
+  PATIENT_REGISTRATION: <UserPlus size={14} />,
+  ADMISSION: <Hospital size={14} />,
+  DISCHARGE: <LogOut size={14} />,
+  BED_STATUS: <BedDouble size={14} />,
+  BILLING: <HeartPulse size={14} />,
+  PHARMACY_LOW_STOCK: <Pill size={14} />,
+  LAB_RESULT: <FlaskConical size={14} />,
+  EMERGENCY: <CircleAlert size={14} />,
+  FOLLOW_UP: <CalendarDays size={14} />,
+  SYSTEM: <Bell size={14} />,
 };
 
 const typeColors: Record<string, string> = {
-  appointment: 'bg-blue-100 text-blue-600',
-  billing: 'bg-emerald-100 text-emerald-600',
-  lab: 'bg-purple-100 text-purple-600',
-  emergency: 'bg-red-100 text-red-600',
-  admission: 'bg-amber-100 text-amber-600',
-  system: 'bg-slate-100 text-slate-600',
+  APPOINTMENT: 'bg-blue-100 text-blue-600',
+  APPOINTMENT_CANCELLED: 'bg-red-100 text-red-600',
+  PATIENT_REGISTRATION: 'bg-purple-100 text-purple-600',
+  ADMISSION: 'bg-amber-100 text-amber-600',
+  DISCHARGE: 'bg-emerald-100 text-emerald-600',
+  BED_STATUS: 'bg-cyan-100 text-cyan-600',
+  BILLING: 'bg-emerald-100 text-emerald-600',
+  PHARMACY_LOW_STOCK: 'bg-orange-100 text-orange-600',
+  LAB_RESULT: 'bg-purple-100 text-purple-600',
+  EMERGENCY: 'bg-red-100 text-red-600',
+  FOLLOW_UP: 'bg-yellow-100 text-yellow-600',
+  SYSTEM: 'bg-slate-100 text-slate-600',
 };
 
 function timeAgo(dateStr: string) {
@@ -72,13 +84,17 @@ export function NotificationBell() {
     socket.on('connect', () => socket.emit('join', 'authenticated'));
 
     // Refresh on any real-time event
-    const refresh = () => { mutate(); if (open) globalMutate('/notifications'); };
+    const refresh = () => { mutate(); globalMutate('/notifications'); };
     socket.on('billing:updated', refresh);
     socket.on('appointment:created', refresh);
     socket.on('patient:admitted', refresh);
     socket.on('lab:completed', refresh);
     socket.on('emergency:status-updated', refresh);
     socket.on('pharmacy:dispensed', refresh);
+    // Direct notification events from backend
+    socket.on('notification:new', refresh);
+    socket.on('notifications:updated', refresh);
+    socket.on('notification:cleared', refresh);
 
     return () => { socket.disconnect(); };
   }, [mutate]);
@@ -149,7 +165,7 @@ export function NotificationBell() {
               notifications.map((n) => (
                 <div
                   key={n.id}
-                  className={`group relative border-b border-slate-50 px-5 py-3.5 transition hover:bg-slate-50 ${n.unread ? 'bg-primary/[0.03]' : ''}`}
+                  className={`group relative border-b border-slate-50 px-5 py-3.5 transition hover:bg-slate-50 ${!n.readAt ? 'bg-primary/[0.03]' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${typeColors[n.type] || 'bg-slate-100 text-slate-500'}`}>
@@ -161,11 +177,11 @@ export function NotificationBell() {
                         <span className="shrink-0 text-[10px] text-slate-400">{timeAgo(n.createdAt)}</span>
                       </div>
                       <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{n.message}</p>
-                      {n.unread && <span className="mt-1.5 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-primary">New</span>}
+                      {!n.readAt && <span className="mt-1.5 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-primary">New</span>}
                     </div>
                   </div>
                   <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    {n.unread && (
+                    {!n.readAt && (
                       <button
                         onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
                         className="grid size-6 place-items-center rounded-full bg-primary/10 text-primary transition hover:bg-primary/20"
@@ -190,7 +206,20 @@ export function NotificationBell() {
           </div>
 
           {notifications.length > 0 && (
-            <div className="border-t border-slate-100 px-5 py-3 text-center">
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
+              <button
+                onClick={async () => {
+                  await fetch(`${apiUrl}/notifications/clear`, {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${localStorage.getItem('vasavi-token') || ''}` },
+                  });
+                  mutate();
+                  globalMutate('/notifications/unread');
+                }}
+                className="text-xs font-medium text-slate-400 transition hover:text-red-500"
+              >
+                Clear all
+              </button>
               <button
                 onClick={() => setOpen(false)}
                 className="text-xs font-semibold text-primary transition hover:text-primary/80"

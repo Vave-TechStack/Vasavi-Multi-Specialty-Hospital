@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertCircle, Baby, Bone, Brain, Cross, HeartPulse, LoaderCircle, Ribbon, Stethoscope, Calendar, User, Phone, Mail, MapPin, ShieldAlert, FileText, ClipboardList, Receipt, Landmark, Clock, ArrowLeft, FlaskConical, Pill } from 'lucide-react';
+import { Activity, AlertCircle, Baby, Bone, Brain, Cross, HeartPulse, LoaderCircle, Ribbon, Stethoscope, Calendar, User, Phone, Mail, MapPin, ShieldAlert, FileText, ClipboardList, Receipt, Landmark, Clock, ArrowLeft, FlaskConical, Pill, Plus } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import useSWR from 'swr';
 import Link from 'next/link';
@@ -224,7 +224,72 @@ export function HospitalData({ patientId }: { patientId: string }) {
     return res.json();
   };
 
-  const { data, error, isLoading } = useSWR(`${apiUrl}/patients/${patientId}/profile`, fetcher);
+  const { data, error, isLoading, mutate } = useSWR(`${apiUrl}/patients/${patientId}/profile`, fetcher);
+  const [showAddRecord, setShowAddRecord] = useState(false);
+  const [showAddPrescription, setShowAddPrescription] = useState(false);
+  const [doctorsList, setDoctorsList] = useState<{id: string, user: {name: string}}[]>([]);
+  const [medicinesList, setMedicinesList] = useState<{id: string, name: string}[]>([]);
+
+  useEffect(() => {
+    if (activeTab === 'clinical' && doctorsList.length === 0) {
+      fetch(`${apiUrl}/doctors-list`, { headers: { Authorization: `Bearer ${token || ''}` } })
+        .then(res => res.json())
+        .then(data => setDoctorsList(Array.isArray(data) ? data : []))
+        .catch(console.error);
+    }
+  }, [activeTab, doctorsList.length, token]);
+
+  useEffect(() => {
+    if (activeTab === 'medications' && medicinesList.length === 0) {
+      fetch(`${apiUrl}/pharmacy`, { headers: { Authorization: `Bearer ${token || ''}` } })
+        .then(res => res.json())
+        .then(data => {
+          const list = Array.isArray(data) ? data : (data.items || []);
+          setMedicinesList(list);
+        })
+        .catch(console.error);
+    }
+  }, [activeTab, medicinesList.length, token]);
+
+  const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    try {
+      const res = await fetch(`${apiUrl}/patients/${patientId}/medical-records`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`
+        },
+        body: JSON.stringify(Object.fromEntries(formData))
+      });
+      if (!res.ok) throw new Error('Failed to add record');
+      await mutate();
+      setShowAddRecord(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleAddPrescription = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    try {
+      const res = await fetch(`${apiUrl}/patients/${patientId}/prescriptions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`
+        },
+        body: JSON.stringify(Object.fromEntries(formData))
+      });
+      if (!res.ok) throw new Error('Failed to add prescription');
+      await mutate();
+      setShowAddPrescription(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   if (isLoading) {
     return (
@@ -379,9 +444,14 @@ export function HospitalData({ patientId }: { patientId: string }) {
                 </div>
 
                 <div className="border-t border-slate-100 pt-6">
-                  <h3 className="font-poppins font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                    <ClipboardList size={18} className="text-primary" /> Medical Records
-                  </h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-poppins font-semibold text-slate-800 flex items-center gap-2">
+                      <ClipboardList size={18} className="text-primary" /> Medical Records
+                    </h3>
+                    <button onClick={() => setShowAddRecord(true)} className="btn-secondary !py-1.5 !px-3 text-xs flex items-center gap-1">
+                      <Plus size={14} /> Add Record
+                    </button>
+                  </div>
                   {patient.medicalRecords?.length > 0 ? (
                     <div className="space-y-4">
                       {patient.medicalRecords.map((rec: any) => (
@@ -390,7 +460,7 @@ export function HospitalData({ patientId }: { patientId: string }) {
                             <span>Diagnosis: {rec.diagnosis}</span>
                             <span className="text-xs font-normal text-slate-400">{new Date(rec.createdAt).toLocaleDateString()}</span>
                           </div>
-                          <p className="mt-2 text-slate-600">{rec.treatmentPlan || 'No treatment plan documented.'}</p>
+                          <p className="mt-2 text-slate-600">{rec.notes || 'No treatment plan documented.'}</p>
                           <p className="mt-1 text-xs text-slate-400">Dr. {rec.doctor?.user?.name || '—'}</p>
                         </div>
                       ))}
@@ -537,9 +607,14 @@ export function HospitalData({ patientId }: { patientId: string }) {
             
             {activeTab === 'medications' && (
               <div className="space-y-4">
-                <h3 className="font-poppins font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                  <Pill size={18} className="text-primary" /> Medication History
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-poppins font-semibold text-slate-800 flex items-center gap-2">
+                    <Pill size={18} className="text-primary" /> Medication History
+                  </h3>
+                  <button onClick={() => setShowAddPrescription(true)} className="btn-secondary !py-1.5 !px-3 text-xs flex items-center gap-1">
+                    <Plus size={14} /> Add Prescription
+                  </button>
+                </div>
                 {patient.medicineUsages?.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-slate-600">
@@ -591,6 +666,64 @@ export function HospitalData({ patientId }: { patientId: string }) {
           </div>
         </div>
       </div>
+
+      {showAddRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 font-poppins text-lg font-semibold">Add Medical Record</h2>
+            <form onSubmit={handleAddRecord} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Doctor</label>
+                <select name="doctorId" required className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                  <option value="">Select Doctor</option>
+                  {doctorsList.map(doc => <option key={doc.id} value={doc.id}>{doc.user?.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Diagnosis</label>
+                <input name="diagnosis" required className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Enter diagnosis" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Notes / Treatment Plan</label>
+                <textarea name="notes" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" rows={4} placeholder="Enter detailed notes..."></textarea>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowAddRecord(false)} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Save Record</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAddPrescription && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 font-poppins text-lg font-semibold">Add Prescription</h2>
+            <form onSubmit={handleAddPrescription} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Medicine</label>
+                <select name="medicineId" required className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                  <option value="">Select Medicine</option>
+                  {medicinesList.map(med => <option key={med.id} value={med.id}>{med.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Quantity</label>
+                <input name="quantity" type="number" required min="1" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Enter quantity" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Dosage Instructions</label>
+                <input name="notes" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="e.g. 1 tablet twice a day after meals" />
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowAddPrescription(false)} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Save Prescription</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

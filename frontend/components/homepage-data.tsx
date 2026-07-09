@@ -14,6 +14,28 @@ type HomepageData = {
   healthArticles: { image: string; category: string; title: string }[];
 };
 
+// Module-level cache: all 4 homepage components share a single API call
+let homepageDataPromise: Promise<HomepageData | null> | null = null;
+
+function useSharedHomepageData() {
+  const [data, setData] = useState<HomepageData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!homepageDataPromise) {
+      homepageDataPromise = fetch(`${apiUrl}/public/homepage`)
+        .then(r => r.json())
+        .catch(() => null);
+    }
+    homepageDataPromise.then((d) => {
+      setData(d);
+      setLoading(false);
+    });
+  }, []);
+
+  return { data, loading };
+}
+
 const facilityIcons: Record<string, React.ReactNode> = {
   bed: <BedDouble size={27} />,
   pill: <Pill size={27} />,
@@ -24,15 +46,7 @@ const facilityIcons: Record<string, React.ReactNode> = {
 };
 
 export function HomepageStats() {
-  const [data, setData] = useState<HomepageData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${apiUrl}/public/homepage`)
-      .then(r => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const { data, loading } = useSharedHomepageData();
 
   if (loading) {
     return (
@@ -66,15 +80,7 @@ export function HomepageStats() {
 }
 
 export function HomepageTestimonials() {
-  const [data, setData] = useState<HomepageData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${apiUrl}/public/homepage`)
-      .then(r => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const { data, loading } = useSharedHomepageData();
 
   if (loading) {
     return (
@@ -118,15 +124,7 @@ export function HomepageTestimonials() {
 }
 
 export function HomepageFacilities() {
-  const [data, setData] = useState<HomepageData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${apiUrl}/public/homepage`)
-      .then(r => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const { data, loading } = useSharedHomepageData();
 
   if (loading) {
     return (
@@ -161,15 +159,7 @@ export function HomepageFacilities() {
 }
 
 export function HomepageHealthArticles() {
-  const [data, setData] = useState<HomepageData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${apiUrl}/public/homepage`)
-      .then(r => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const { data, loading } = useSharedHomepageData();
 
   if (loading) {
     return (
